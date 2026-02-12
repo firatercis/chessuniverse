@@ -1,0 +1,33 @@
+# Unity generated
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+
+# IDE
+.vs/
+.vscode/
+*.csproj
+*.sln
+*.suo
+*.user
+*.pidb
+*.booproj
+
+# OS
+.DS_Store
+Thumbs.db
+nul
+
+# Nested Unity project - ignore generated files
+ChessUniverse/Library/
+ChessUniverse/Temp/
+ChessUniverse/obj/
+ChessUniverse/Logs/
+ChessUniverse/UserSettings/
+ChessUniverse/*.csproj
+ChessUniverse/*.sln
