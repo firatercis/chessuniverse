@@ -18,9 +18,13 @@ public class GameManager : MonoBehaviour
 
     private ChessPiece selectedPiece;
     private List<Vector2Int> currentLegalMoves = new();
-    private Vector2Int? enPassantTarget;
+    public Vector2Int? enPassantTarget { get; private set; }
     private bool waitingForPromotion;
     private ChessPiece promotingPawn;
+
+    // Play mode
+    private PlayMode currentPlayMode = PlayMode.Local;
+    private bool waitingForAI;
 
     // Seed Chess state
     private bool isPlantingMode;
@@ -43,10 +47,12 @@ public class GameManager : MonoBehaviour
         UIManager.Instance.ShowMainMenu();
     }
 
-    public void StartGame(GameMode mode)
+    public void StartGame(GameMode mode, PlayMode playMode = PlayMode.Local)
     {
         GameBootstrap.CurrentMode = mode;
+        currentPlayMode = playMode;
         showingMenu = false;
+        waitingForAI = false;
         UIManager.Instance.HideMainMenu();
 
         currentTurn = PieceColor.White;
@@ -58,6 +64,7 @@ public class GameManager : MonoBehaviour
         promotingPawn = null;
         isPlantingMode = false;
 
+        ChessAI.Instance.ResetHistory();
         SeedManager.Instance.ClearAll();
         ChessBoard.Instance.SetupPieces();
         UIManager.Instance.UpdateTurnText(currentTurn);
@@ -76,6 +83,18 @@ public class GameManager : MonoBehaviour
         if (showingMenu) return;
         if (waitingForPromotion) return;
         if (gameState == GameState.Checkmate || gameState == GameState.Stalemate) return;
+        if (waitingForAI) return;
+
+        // AI turn: trigger automatically
+        if (currentPlayMode == PlayMode.SinglePlayer
+            && currentTurn == PieceColor.Black
+            && gameState != GameState.Checkmate
+            && gameState != GameState.Stalemate)
+        {
+            waitingForAI = true;
+            ChessAI.Instance.PlayTurn(ChessBoard.Instance.board, enPassantTarget);
+            return;
+        }
 
         if (Input.GetMouseButtonDown(0))
         {
@@ -205,6 +224,9 @@ public class GameManager : MonoBehaviour
 
     private void ExecuteMove(ChessPiece piece, Vector2Int target)
     {
+        // Record move for opening book
+        ChessAI.Instance.RecordMove(new Vector2Int(piece.x, piece.y), target);
+
         bool isPawnDoubleMove = false;
         bool isEnPassant = false;
         bool isCastling = false;
@@ -280,6 +302,70 @@ public class GameManager : MonoBehaviour
         EndTurn();
     }
 
+    public void ApplyAIMove(ChessPiece piece, Vector2Int target, PieceType? promotionType)
+    {
+        // Record move for opening book
+        ChessAI.Instance.RecordMove(new Vector2Int(piece.x, piece.y), target);
+
+        bool isPawnDoubleMove = false;
+        bool isEnPassant = false;
+        bool isCastling = false;
+
+        if (piece.type == PieceType.Pawn)
+        {
+            if (Mathf.Abs(target.y - piece.y) == 2)
+                isPawnDoubleMove = true;
+            if (enPassantTarget.HasValue && target == enPassantTarget.Value)
+                isEnPassant = true;
+        }
+
+        if (piece.type == PieceType.King && Mathf.Abs(target.x - piece.x) == 2)
+            isCastling = true;
+
+        if (isEnPassant)
+        {
+            int capturedY = piece.color == PieceColor.White ? target.y - 1 : target.y + 1;
+            ChessBoard.Instance.RemovePiece(target.x, capturedY);
+        }
+
+        if (isCastling)
+        {
+            bool kingside = target.x > piece.x;
+            int rookFromX = kingside ? 7 : 0;
+            int rookToX = kingside ? target.x - 1 : target.x + 1;
+            ChessPiece rook = ChessBoard.Instance.board[rookFromX, piece.y];
+            ChessBoard.Instance.MovePiece(rook, rookToX, piece.y);
+        }
+
+        ChessBoard.Instance.MovePiece(piece, target.x, target.y);
+
+        enPassantTarget = isPawnDoubleMove
+            ? new Vector2Int(piece.x, piece.color == PieceColor.White ? piece.y - 1 : piece.y + 1)
+            : null;
+
+        // AI promotion (no popup)
+        if (promotionType.HasValue)
+        {
+            int px = piece.x;
+            int py = piece.y;
+            PieceColor pcolor = piece.color;
+            ChessBoard.Instance.RemovePiece(px, py);
+            ChessBoard.Instance.CreatePiece(promotionType.Value, pcolor, px, py);
+        }
+
+        waitingForAI = false;
+        DeselectPiece();
+        EndTurn();
+    }
+
+    public void ApplyAIPlanting(Vector2Int square, PieceType seedType)
+    {
+        SeedManager.Instance.PlantSeed(square.x, square.y, PieceColor.Black, seedType);
+        waitingForAI = false;
+        DeselectPiece();
+        EndTurn();
+    }
+
     private void EndTurn()
     {
         // Process seeds BEFORE switching turns
@@ -345,7 +431,9 @@ public class GameManager : MonoBehaviour
         waitingForPromotion = false;
         promotingPawn = null;
         isPlantingMode = false;
+        waitingForAI = false;
         showingMenu = true;
+        ChessAI.Instance.ResetHistory();
 
         SeedManager.Instance.ClearAll();
         ChessBoard.Instance.ClearHighlights();

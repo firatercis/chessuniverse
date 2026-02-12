@@ -12,6 +12,8 @@ public class UIManager : MonoBehaviour
     private TextMeshProUGUI gameOverText;
     private GameObject promotionPanel;
     private GameObject mainMenuPanel;
+    private GameObject playerModePanel;
+    private GameMode pendingGameMode;
     private GameObject seedButtonsPanel;
 
     private void Awake()
@@ -54,8 +56,9 @@ public class UIManager : MonoBehaviour
         // File/Rank labels
         CreateBoardLabels(canvasObj);
 
-        // Seed Chess panels
+        // Menus and panels
         CreateMainMenuPanel(canvasObj);
+        CreatePlayerModePanel(canvasObj);
         CreateSeedButtonsPanel(canvasObj);
     }
 
@@ -221,13 +224,76 @@ public class UIManager : MonoBehaviour
 
         // Classic Chess button
         CreateButton(mainMenuPanel, "ClassicBtn", "Classic Chess", new Vector2(0, 20),
-            () => GameManager.Instance.StartGame(GameMode.Classic), 300);
+            () => { HideMainMenu(); ShowPlayerModePanel(GameMode.Classic); }, 300);
 
         // Seed Chess button
         CreateButton(mainMenuPanel, "SeedBtn", "Seed Chess", new Vector2(0, -50),
-            () => GameManager.Instance.StartGame(GameMode.SeedChess), 300);
+            () => { HideMainMenu(); ShowPlayerModePanel(GameMode.SeedChess); }, 300);
 
         mainMenuPanel.SetActive(false);
+    }
+
+    private void CreatePlayerModePanel(GameObject parent)
+    {
+        playerModePanel = new GameObject("PlayerModePanel");
+        playerModePanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = playerModePanel.AddComponent<Image>();
+        panelImg.color = new Color(0.12f, 0.12f, 0.16f, 0.95f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        // Title
+        GameObject titleObj = new GameObject("ModeTitle");
+        titleObj.transform.SetParent(playerModePanel.transform, false);
+        var titleText = titleObj.AddComponent<TextMeshProUGUI>();
+        titleText.text = "Select Mode";
+        titleText.fontSize = 48;
+        titleText.alignment = TextAlignmentOptions.Center;
+        titleText.color = Color.white;
+        titleText.fontStyle = FontStyles.Bold;
+        var titleRect = titleText.rectTransform;
+        titleRect.anchorMin = new Vector2(0.5f, 0.5f);
+        titleRect.anchorMax = new Vector2(0.5f, 0.5f);
+        titleRect.sizeDelta = new Vector2(600, 70);
+        titleRect.anchoredPosition = new Vector2(0, 100);
+
+        // Single Player button
+        CreateButton(playerModePanel, "SinglePlayerBtn", "Single Player", new Vector2(0, 10),
+            () => {
+                HidePlayerModePanel();
+                GameManager.Instance.StartGame(pendingGameMode, PlayMode.SinglePlayer);
+            }, 300);
+
+        // Two Players button
+        CreateButton(playerModePanel, "TwoPlayersBtn", "Two Players", new Vector2(0, -60),
+            () => {
+                HidePlayerModePanel();
+                GameManager.Instance.StartGame(pendingGameMode, PlayMode.Local);
+            }, 300);
+
+        // Back button
+        CreateButton(playerModePanel, "BackBtn", "Back", new Vector2(0, -130),
+            () => {
+                HidePlayerModePanel();
+                ShowMainMenu();
+            }, 200);
+
+        playerModePanel.SetActive(false);
+    }
+
+    public void ShowPlayerModePanel(GameMode mode)
+    {
+        pendingGameMode = mode;
+        playerModePanel.SetActive(true);
+    }
+
+    public void HidePlayerModePanel()
+    {
+        playerModePanel.SetActive(false);
     }
 
     private void CreateSeedButtonsPanel(GameObject parent)

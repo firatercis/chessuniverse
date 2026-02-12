@@ -31,6 +31,11 @@ public static class GameBootstrap
         seedObj.AddComponent<SeedManager>();
         Object.DontDestroyOnLoad(seedObj);
 
+        // Create Chess AI
+        GameObject aiObj = new GameObject("ChessAI");
+        aiObj.AddComponent<ChessAI>();
+        Object.DontDestroyOnLoad(aiObj);
+
         // Create Game Manager
         GameObject gmObj = new GameObject("GameManager");
         gmObj.AddComponent<GameManager>();

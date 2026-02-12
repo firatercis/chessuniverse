@@ -18,6 +18,7 @@ public class SeedManager : MonoBehaviour
     }
 
     private List<SeedData> seeds = new();
+    public List<SeedData> Seeds => seeds;
 
     public static readonly Dictionary<PieceType, int> GrowthTurns = new()
     {
