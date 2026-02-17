@@ -1,5 +1,6 @@
 public enum PlayMode
 {
     Local,
-    SinglePlayer
+    SinglePlayer,
+    Online
 }

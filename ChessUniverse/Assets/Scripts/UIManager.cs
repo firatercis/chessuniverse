@@ -16,6 +16,36 @@ public class UIManager : MonoBehaviour
     private GameMode pendingGameMode;
     private GameObject seedButtonsPanel;
 
+    // Bluffy panels
+    private GameObject setupPanel;
+    private TextMeshProUGUI setupText;
+    private GameObject passDevicePanel;
+    private TextMeshProUGUI passDeviceText;
+    private GameObject bluffPanel;
+    private GameObject sacrificePanel;
+    private TextMeshProUGUI sacrificeText;
+    private GameObject rearrangePanel;
+    private TextMeshProUGUI rearrangeText;
+    private Button singlePlayerButton;
+    private GameObject infoPanel;
+    private TextMeshProUGUI infoText;
+    private System.Action infoDismissAction;
+
+    // Splash text (dramatic bluff call)
+    private GameObject splashPanel;
+    private TextMeshProUGUI splashText;
+    private CanvasGroup splashCanvasGroup;
+
+    // Online panels
+    private GameObject lobbyPanel;
+    private GameObject hostWaitPanel;
+    private TextMeshProUGUI hostWaitCodeText;
+    private GameObject joinPanel;
+    private TMP_InputField joinCodeInput;
+    private TextMeshProUGUI joinErrorText;
+    private GameObject connectionStatusObj;
+    private TextMeshProUGUI connectionStatusText;
+
     private void Awake()
     {
         Instance = this;
@@ -60,6 +90,23 @@ public class UIManager : MonoBehaviour
         CreateMainMenuPanel(canvasObj);
         CreatePlayerModePanel(canvasObj);
         CreateSeedButtonsPanel(canvasObj);
+
+        // Splash text
+        CreateSplashPanel(canvasObj);
+
+        // Online panels
+        CreateLobbyPanel(canvasObj);
+        CreateHostWaitPanel(canvasObj);
+        CreateJoinPanel(canvasObj);
+        CreateConnectionStatus(canvasObj);
+
+        // Bluffy panels
+        CreateSetupPanel(canvasObj);
+        CreatePassDevicePanel(canvasObj);
+        CreateBluffPanel(canvasObj);
+        CreateSacrificePanel(canvasObj);
+        CreateRearrangePanel(canvasObj);
+        CreateInfoPanel(canvasObj);
     }
 
     private void CreateTurnIndicator(GameObject parent)
@@ -230,6 +277,10 @@ public class UIManager : MonoBehaviour
         CreateButton(mainMenuPanel, "SeedBtn", "Seed Chess", new Vector2(0, -50),
             () => { HideMainMenu(); ShowPlayerModePanel(GameMode.SeedChess); }, 300);
 
+        // Bluffy Chess button
+        CreateButton(mainMenuPanel, "BluffyBtn", "Bluffy Chess", new Vector2(0, -120),
+            () => { HideMainMenu(); ShowPlayerModePanel(GameMode.BluffyChess); }, 300);
+
         mainMenuPanel.SetActive(false);
     }
 
@@ -262,11 +313,12 @@ public class UIManager : MonoBehaviour
         titleRect.anchoredPosition = new Vector2(0, 100);
 
         // Single Player button
-        CreateButton(playerModePanel, "SinglePlayerBtn", "Single Player", new Vector2(0, 10),
+        var spBtnObj = CreateButton(playerModePanel, "SinglePlayerBtn", "Single Player", new Vector2(0, 10),
             () => {
                 HidePlayerModePanel();
                 GameManager.Instance.StartGame(pendingGameMode, PlayMode.SinglePlayer);
             }, 300);
+        singlePlayerButton = spBtnObj.GetComponent<Button>();
 
         // Two Players button
         CreateButton(playerModePanel, "TwoPlayersBtn", "Two Players", new Vector2(0, -60),
@@ -275,8 +327,15 @@ public class UIManager : MonoBehaviour
                 GameManager.Instance.StartGame(pendingGameMode, PlayMode.Local);
             }, 300);
 
+        // Online button
+        CreateButton(playerModePanel, "OnlineBtn", "Online", new Vector2(0, -130),
+            () => {
+                HidePlayerModePanel();
+                ShowLobbyPanel();
+            }, 300);
+
         // Back button
-        CreateButton(playerModePanel, "BackBtn", "Back", new Vector2(0, -130),
+        CreateButton(playerModePanel, "BackBtn", "Back", new Vector2(0, -200),
             () => {
                 HidePlayerModePanel();
                 ShowMainMenu();
@@ -288,6 +347,8 @@ public class UIManager : MonoBehaviour
     public void ShowPlayerModePanel(GameMode mode)
     {
         pendingGameMode = mode;
+        // Single player available for all modes
+        singlePlayerButton.interactable = true;
         playerModePanel.SetActive(true);
     }
 
@@ -393,7 +454,7 @@ public class UIManager : MonoBehaviour
         tmp.sortingOrder = 5;
     }
 
-    private void CreateButton(GameObject parent, string name, string label, Vector2 position,
+    private GameObject CreateButton(GameObject parent, string name, string label, Vector2 position,
         UnityEngine.Events.UnityAction onClick, float width = 200)
     {
         GameObject btnObj = new GameObject(name);
@@ -428,6 +489,8 @@ public class UIManager : MonoBehaviour
         textRect.anchorMax = Vector2.one;
         textRect.offsetMin = Vector2.zero;
         textRect.offsetMax = Vector2.zero;
+
+        return btnObj;
     }
 
     public void UpdateTurnText(PieceColor color, bool inCheck = false)
@@ -484,5 +547,703 @@ public class UIManager : MonoBehaviour
     public void HideSeedButtons()
     {
         seedButtonsPanel.SetActive(false);
+    }
+
+    // ─── Splash Text ───
+
+    private void CreateSplashPanel(GameObject parent)
+    {
+        splashPanel = new GameObject("SplashPanel");
+        splashPanel.transform.SetParent(parent.transform, false);
+
+        splashCanvasGroup = splashPanel.AddComponent<CanvasGroup>();
+        splashCanvasGroup.alpha = 0f;
+        splashCanvasGroup.blocksRaycasts = false;
+        splashCanvasGroup.interactable = false;
+
+        var panelRect = splashPanel.AddComponent<RectTransform>();
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        // Dramatic text
+        GameObject textObj = new GameObject("SplashText");
+        textObj.transform.SetParent(splashPanel.transform, false);
+        splashText = textObj.AddComponent<TextMeshProUGUI>();
+        splashText.fontSize = 100;
+        splashText.alignment = TextAlignmentOptions.Center;
+        splashText.color = new Color(1f, 0.15f, 0.15f);
+        splashText.fontStyle = FontStyles.Bold | FontStyles.Italic;
+        splashText.enableWordWrapping = false;
+        splashText.outlineWidth = 0.3f;
+        splashText.outlineColor = new Color32(0, 0, 0, 200);
+        var textRect = splashText.rectTransform;
+        textRect.anchorMin = new Vector2(0.5f, 0.5f);
+        textRect.anchorMax = new Vector2(0.5f, 0.5f);
+        textRect.sizeDelta = new Vector2(900, 150);
+        textRect.anchoredPosition = Vector2.zero;
+
+        splashPanel.SetActive(false);
+    }
+
+    private static readonly Color SplashRed = new Color(1f, 0.15f, 0.15f);
+
+    public void ShowSplashText(string text, float duration, System.Action onComplete = null, Color? color = null)
+    {
+        StartCoroutine(SplashTextCoroutine(text, duration, onComplete, color ?? SplashRed));
+    }
+
+    private System.Collections.IEnumerator SplashTextCoroutine(string text, float duration, System.Action onComplete, Color color)
+    {
+        splashText.text = text;
+        splashText.color = color;
+        splashPanel.SetActive(true);
+
+        // Scale-up punch entrance
+        float fadeIn = 0.15f;
+        float startScale = 1.8f;
+        float elapsed = 0f;
+
+        splashText.transform.localScale = Vector3.one * startScale;
+        splashCanvasGroup.alpha = 0f;
+
+        while (elapsed < fadeIn)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / fadeIn;
+            splashCanvasGroup.alpha = t;
+            float s = Mathf.Lerp(startScale, 1f, t * t); // ease-out
+            splashText.transform.localScale = Vector3.one * s;
+            yield return null;
+        }
+        splashCanvasGroup.alpha = 1f;
+        splashText.transform.localScale = Vector3.one;
+
+        // Hold
+        yield return new WaitForSeconds(duration);
+
+        // Fade out
+        float fadeOut = 0.25f;
+        elapsed = 0f;
+        while (elapsed < fadeOut)
+        {
+            elapsed += Time.deltaTime;
+            splashCanvasGroup.alpha = 1f - (elapsed / fadeOut);
+            yield return null;
+        }
+
+        splashCanvasGroup.alpha = 0f;
+        splashPanel.SetActive(false);
+
+        onComplete?.Invoke();
+    }
+
+    // ─── Online Panels ───
+
+    private void CreateLobbyPanel(GameObject parent)
+    {
+        lobbyPanel = new GameObject("LobbyPanel");
+        lobbyPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = lobbyPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.12f, 0.12f, 0.16f, 0.95f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        // Title
+        GameObject titleObj = new GameObject("LobbyTitle");
+        titleObj.transform.SetParent(lobbyPanel.transform, false);
+        var titleText = titleObj.AddComponent<TextMeshProUGUI>();
+        titleText.text = "Online";
+        titleText.fontSize = 48;
+        titleText.alignment = TextAlignmentOptions.Center;
+        titleText.color = Color.white;
+        titleText.fontStyle = FontStyles.Bold;
+        var titleRect = titleText.rectTransform;
+        titleRect.anchorMin = new Vector2(0.5f, 0.5f);
+        titleRect.anchorMax = new Vector2(0.5f, 0.5f);
+        titleRect.sizeDelta = new Vector2(600, 70);
+        titleRect.anchoredPosition = new Vector2(0, 100);
+
+        CreateButton(lobbyPanel, "HostGameBtn", "Host Game", new Vector2(0, 10),
+            () => {
+                HideLobbyPanel();
+                OnHostGameClicked();
+            }, 300);
+
+        CreateButton(lobbyPanel, "JoinGameBtn", "Join Game", new Vector2(0, -60),
+            () => {
+                HideLobbyPanel();
+                ShowJoinPanel();
+            }, 300);
+
+        CreateButton(lobbyPanel, "LobbyBackBtn", "Back", new Vector2(0, -130),
+            () => {
+                HideLobbyPanel();
+                ShowPlayerModePanel(pendingGameMode);
+            }, 200);
+
+        lobbyPanel.SetActive(false);
+    }
+
+    private void CreateHostWaitPanel(GameObject parent)
+    {
+        hostWaitPanel = new GameObject("HostWaitPanel");
+        hostWaitPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = hostWaitPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.12f, 0.12f, 0.16f, 0.95f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        // Room code display
+        GameObject codeObj = new GameObject("RoomCodeText");
+        codeObj.transform.SetParent(hostWaitPanel.transform, false);
+        hostWaitCodeText = codeObj.AddComponent<TextMeshProUGUI>();
+        hostWaitCodeText.fontSize = 56;
+        hostWaitCodeText.alignment = TextAlignmentOptions.Center;
+        hostWaitCodeText.color = new Color(0.4f, 0.8f, 1f);
+        hostWaitCodeText.fontStyle = FontStyles.Bold;
+        var codeRect = hostWaitCodeText.rectTransform;
+        codeRect.anchorMin = new Vector2(0.5f, 0.5f);
+        codeRect.anchorMax = new Vector2(0.5f, 0.5f);
+        codeRect.sizeDelta = new Vector2(600, 80);
+        codeRect.anchoredPosition = new Vector2(0, 40);
+
+        // Waiting text
+        GameObject waitObj = new GameObject("WaitText");
+        waitObj.transform.SetParent(hostWaitPanel.transform, false);
+        var waitText = waitObj.AddComponent<TextMeshProUGUI>();
+        waitText.text = "Waiting for opponent...";
+        waitText.fontSize = 28;
+        waitText.alignment = TextAlignmentOptions.Center;
+        waitText.color = Color.white;
+        var waitRect = waitText.rectTransform;
+        waitRect.anchorMin = new Vector2(0.5f, 0.5f);
+        waitRect.anchorMax = new Vector2(0.5f, 0.5f);
+        waitRect.sizeDelta = new Vector2(600, 50);
+        waitRect.anchoredPosition = new Vector2(0, -20);
+
+        CreateButton(hostWaitPanel, "CancelHostBtn", "Cancel", new Vector2(0, -90),
+            () => {
+                NetworkManager.Instance.LeaveRoom();
+                HideHostWaitPanel();
+                ShowLobbyPanel();
+            }, 200);
+
+        hostWaitPanel.SetActive(false);
+    }
+
+    private void CreateJoinPanel(GameObject parent)
+    {
+        joinPanel = new GameObject("JoinPanel");
+        joinPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = joinPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.12f, 0.12f, 0.16f, 0.95f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        // Title
+        GameObject titleObj = new GameObject("JoinTitle");
+        titleObj.transform.SetParent(joinPanel.transform, false);
+        var titleText = titleObj.AddComponent<TextMeshProUGUI>();
+        titleText.text = "Enter Room Code";
+        titleText.fontSize = 36;
+        titleText.alignment = TextAlignmentOptions.Center;
+        titleText.color = Color.white;
+        titleText.fontStyle = FontStyles.Bold;
+        var titleRect = titleText.rectTransform;
+        titleRect.anchorMin = new Vector2(0.5f, 0.5f);
+        titleRect.anchorMax = new Vector2(0.5f, 0.5f);
+        titleRect.sizeDelta = new Vector2(600, 50);
+        titleRect.anchoredPosition = new Vector2(0, 80);
+
+        // Input field
+        GameObject inputObj = new GameObject("CodeInput");
+        inputObj.transform.SetParent(joinPanel.transform, false);
+        var inputImg = inputObj.AddComponent<Image>();
+        inputImg.color = new Color(0.2f, 0.2f, 0.25f);
+        var inputRect = inputImg.rectTransform;
+        inputRect.anchorMin = new Vector2(0.5f, 0.5f);
+        inputRect.anchorMax = new Vector2(0.5f, 0.5f);
+        inputRect.sizeDelta = new Vector2(300, 50);
+        inputRect.anchoredPosition = new Vector2(0, 20);
+
+        // Text area for input
+        GameObject textAreaObj = new GameObject("Text Area");
+        textAreaObj.transform.SetParent(inputObj.transform, false);
+        var textAreaRect = textAreaObj.AddComponent<RectTransform>();
+        textAreaRect.anchorMin = Vector2.zero;
+        textAreaRect.anchorMax = Vector2.one;
+        textAreaRect.offsetMin = new Vector2(10, 5);
+        textAreaRect.offsetMax = new Vector2(-10, -5);
+
+        GameObject inputTextObj = new GameObject("Text");
+        inputTextObj.transform.SetParent(textAreaObj.transform, false);
+        var inputText = inputTextObj.AddComponent<TextMeshProUGUI>();
+        inputText.fontSize = 32;
+        inputText.alignment = TextAlignmentOptions.Center;
+        inputText.color = Color.white;
+        var inputTextRect = inputText.rectTransform;
+        inputTextRect.anchorMin = Vector2.zero;
+        inputTextRect.anchorMax = Vector2.one;
+        inputTextRect.offsetMin = Vector2.zero;
+        inputTextRect.offsetMax = Vector2.zero;
+
+        // Placeholder
+        GameObject placeholderObj = new GameObject("Placeholder");
+        placeholderObj.transform.SetParent(textAreaObj.transform, false);
+        var placeholder = placeholderObj.AddComponent<TextMeshProUGUI>();
+        placeholder.text = "ABCDEF";
+        placeholder.fontSize = 32;
+        placeholder.alignment = TextAlignmentOptions.Center;
+        placeholder.color = new Color(0.5f, 0.5f, 0.5f, 0.5f);
+        placeholder.fontStyle = FontStyles.Italic;
+        var phRect = placeholder.rectTransform;
+        phRect.anchorMin = Vector2.zero;
+        phRect.anchorMax = Vector2.one;
+        phRect.offsetMin = Vector2.zero;
+        phRect.offsetMax = Vector2.zero;
+
+        joinCodeInput = inputObj.AddComponent<TMP_InputField>();
+        joinCodeInput.textComponent = inputText;
+        joinCodeInput.placeholder = placeholder;
+        joinCodeInput.characterLimit = 6;
+        joinCodeInput.contentType = TMP_InputField.ContentType.Alphanumeric;
+        joinCodeInput.textViewport = textAreaRect;
+
+        // Error text
+        GameObject errorObj = new GameObject("JoinError");
+        errorObj.transform.SetParent(joinPanel.transform, false);
+        joinErrorText = errorObj.AddComponent<TextMeshProUGUI>();
+        joinErrorText.fontSize = 22;
+        joinErrorText.alignment = TextAlignmentOptions.Center;
+        joinErrorText.color = new Color(1f, 0.4f, 0.4f);
+        var errorRect = joinErrorText.rectTransform;
+        errorRect.anchorMin = new Vector2(0.5f, 0.5f);
+        errorRect.anchorMax = new Vector2(0.5f, 0.5f);
+        errorRect.sizeDelta = new Vector2(400, 30);
+        errorRect.anchoredPosition = new Vector2(0, -20);
+
+        CreateButton(joinPanel, "JoinBtn", "Join", new Vector2(-70, -70),
+            () => OnJoinClicked(), 140);
+
+        CreateButton(joinPanel, "JoinBackBtn", "Back", new Vector2(70, -70),
+            () => {
+                HideJoinPanel();
+                ShowLobbyPanel();
+            }, 140);
+
+        joinPanel.SetActive(false);
+    }
+
+    private void CreateConnectionStatus(GameObject parent)
+    {
+        connectionStatusObj = new GameObject("ConnectionStatus");
+        connectionStatusObj.transform.SetParent(parent.transform, false);
+
+        connectionStatusText = connectionStatusObj.AddComponent<TextMeshProUGUI>();
+        connectionStatusText.fontSize = 20;
+        connectionStatusText.alignment = TextAlignmentOptions.Right;
+        connectionStatusText.color = new Color(1f, 0.8f, 0.2f);
+        var rect = connectionStatusText.rectTransform;
+        rect.anchorMin = new Vector2(1f, 1f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(1f, 1f);
+        rect.anchoredPosition = new Vector2(-10, -10);
+        rect.sizeDelta = new Vector2(250, 30);
+
+        connectionStatusObj.SetActive(false);
+    }
+
+    // Online panel actions
+
+    private void OnHostGameClicked()
+    {
+        NetworkManager.Instance.OnOpponentJoined += OnOpponentJoinedHandler;
+        NetworkManager.Instance.CreateRoom(pendingGameMode,
+            (code) => {
+                hostWaitCodeText.text = $"Room: {code}";
+                ShowHostWaitPanel();
+            },
+            (error) => {
+                ShowInfoPanel(error);
+                ShowLobbyPanel();
+            });
+    }
+
+    private void OnOpponentJoinedHandler()
+    {
+        NetworkManager.Instance.OnOpponentJoined -= OnOpponentJoinedHandler;
+        HideHostWaitPanel();
+        GameManager.Instance.StartGame(pendingGameMode, PlayMode.Online);
+    }
+
+    private void OnJoinClicked()
+    {
+        string code = joinCodeInput.text.Trim().ToUpper();
+        if (code.Length != 6)
+        {
+            joinErrorText.text = "Code must be 6 characters";
+            return;
+        }
+
+        joinErrorText.text = "";
+        NetworkManager.Instance.JoinRoom(code,
+            (mode) => {
+                HideJoinPanel();
+                pendingGameMode = mode;
+                GameManager.Instance.StartGame(mode, PlayMode.Online);
+            },
+            (error) => {
+                joinErrorText.text = error;
+            });
+    }
+
+    // Online panel show/hide
+
+    public void ShowLobbyPanel() { lobbyPanel.SetActive(true); }
+    public void HideLobbyPanel() { lobbyPanel.SetActive(false); }
+    public void ShowHostWaitPanel() { hostWaitPanel.SetActive(true); }
+    public void HideHostWaitPanel() { hostWaitPanel.SetActive(false); }
+    public void ShowJoinPanel()
+    {
+        joinCodeInput.text = "";
+        joinErrorText.text = "";
+        joinPanel.SetActive(true);
+    }
+    public void HideJoinPanel() { joinPanel.SetActive(false); }
+
+    public void ShowConnectionStatus(string status)
+    {
+        connectionStatusText.text = status;
+        connectionStatusObj.SetActive(true);
+    }
+
+    public void HideConnectionStatus()
+    {
+        connectionStatusObj.SetActive(false);
+    }
+
+    public void HideOnlinePanels()
+    {
+        HideLobbyPanel();
+        HideHostWaitPanel();
+        HideJoinPanel();
+        HideConnectionStatus();
+    }
+
+    // ─── Bluffy Panels ───
+
+    private void CreateSetupPanel(GameObject parent)
+    {
+        setupPanel = new GameObject("SetupPanel");
+        setupPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = setupPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.1f, 0.1f, 0.15f, 0.9f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = new Vector2(0.5f, 1f);
+        panelRect.anchorMax = new Vector2(0.5f, 1f);
+        panelRect.pivot = new Vector2(0.5f, 1f);
+        panelRect.anchoredPosition = new Vector2(0, -90);
+        panelRect.sizeDelta = new Vector2(500, 120);
+
+        GameObject textObj = new GameObject("SetupText");
+        textObj.transform.SetParent(setupPanel.transform, false);
+        setupText = textObj.AddComponent<TextMeshProUGUI>();
+        setupText.fontSize = 24;
+        setupText.alignment = TextAlignmentOptions.Center;
+        setupText.color = Color.white;
+        var textRect = setupText.rectTransform;
+        textRect.anchorMin = new Vector2(0, 0.5f);
+        textRect.anchorMax = new Vector2(1, 1);
+        textRect.offsetMin = new Vector2(10, 0);
+        textRect.offsetMax = new Vector2(-10, -5);
+
+        CreateButton(setupPanel, "ConfirmSetupBtn", "Confirm", new Vector2(0, -35),
+            () => BluffyManager.Instance.ConfirmSetup(), 180);
+
+        setupPanel.SetActive(false);
+    }
+
+    private void CreatePassDevicePanel(GameObject parent)
+    {
+        passDevicePanel = new GameObject("PassDevicePanel");
+        passDevicePanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = passDevicePanel.AddComponent<Image>();
+        panelImg.color = new Color(0.05f, 0.05f, 0.08f, 0.98f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        GameObject textObj = new GameObject("PassText");
+        textObj.transform.SetParent(passDevicePanel.transform, false);
+        passDeviceText = textObj.AddComponent<TextMeshProUGUI>();
+        passDeviceText.fontSize = 42;
+        passDeviceText.alignment = TextAlignmentOptions.Center;
+        passDeviceText.color = Color.white;
+        passDeviceText.fontStyle = FontStyles.Bold;
+        var textRect = passDeviceText.rectTransform;
+        textRect.anchorMin = new Vector2(0.5f, 0.5f);
+        textRect.anchorMax = new Vector2(0.5f, 0.5f);
+        textRect.sizeDelta = new Vector2(700, 120);
+        textRect.anchoredPosition = new Vector2(0, 50);
+
+        CreateButton(passDevicePanel, "ReadyBtn", "Ready", new Vector2(0, -60),
+            () => BluffyManager.Instance.OnPassDeviceReady(), 250);
+
+        passDevicePanel.SetActive(false);
+    }
+
+    private void CreateBluffPanel(GameObject parent)
+    {
+        bluffPanel = new GameObject("BluffPanel");
+        bluffPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = bluffPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.1f, 0.1f, 0.15f, 0.9f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = new Vector2(0.5f, 0f);
+        panelRect.anchorMax = new Vector2(0.5f, 0f);
+        panelRect.pivot = new Vector2(0.5f, 0f);
+        panelRect.anchoredPosition = new Vector2(0, 80);
+        panelRect.sizeDelta = new Vector2(400, 120);
+
+        GameObject textObj = new GameObject("BluffText");
+        textObj.transform.SetParent(bluffPanel.transform, false);
+        var bluffText = textObj.AddComponent<TextMeshProUGUI>();
+        bluffText.text = "Opponent moved a big piece!";
+        bluffText.fontSize = 22;
+        bluffText.alignment = TextAlignmentOptions.Center;
+        bluffText.color = Color.white;
+        var textRect = bluffText.rectTransform;
+        textRect.anchorMin = new Vector2(0, 0.55f);
+        textRect.anchorMax = new Vector2(1, 1);
+        textRect.offsetMin = new Vector2(10, 0);
+        textRect.offsetMax = new Vector2(-10, -5);
+
+        // Bluff button (red)
+        var bluffBtn = CreateButton(bluffPanel, "CallBluffBtn", "Bluff!", new Vector2(-80, -25),
+            () => GameManager.Instance.OnBluffCalled(), 140);
+        bluffBtn.GetComponent<Image>().color = new Color(0.8f, 0.2f, 0.2f);
+
+        // Accept button (green)
+        CreateButton(bluffPanel, "AcceptBtn", "Accept", new Vector2(80, -25),
+            () => GameManager.Instance.OnMoveAccepted(), 140);
+
+        bluffPanel.SetActive(false);
+    }
+
+    private void CreateSacrificePanel(GameObject parent)
+    {
+        sacrificePanel = new GameObject("SacrificePanel");
+        sacrificePanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = sacrificePanel.AddComponent<Image>();
+        panelImg.color = new Color(0.15f, 0.08f, 0.08f, 0.9f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = new Vector2(0.5f, 1f);
+        panelRect.anchorMax = new Vector2(0.5f, 1f);
+        panelRect.pivot = new Vector2(0.5f, 1f);
+        panelRect.anchoredPosition = new Vector2(0, -90);
+        panelRect.sizeDelta = new Vector2(500, 70);
+
+        GameObject textObj = new GameObject("SacrificeText");
+        textObj.transform.SetParent(sacrificePanel.transform, false);
+        sacrificeText = textObj.AddComponent<TextMeshProUGUI>();
+        sacrificeText.fontSize = 24;
+        sacrificeText.alignment = TextAlignmentOptions.Center;
+        sacrificeText.color = new Color(1f, 0.4f, 0.4f);
+        sacrificeText.fontStyle = FontStyles.Bold;
+        var textRect = sacrificeText.rectTransform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(10, 5);
+        textRect.offsetMax = new Vector2(-10, -5);
+
+        sacrificePanel.SetActive(false);
+    }
+
+    private void CreateRearrangePanel(GameObject parent)
+    {
+        rearrangePanel = new GameObject("RearrangePanel");
+        rearrangePanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = rearrangePanel.AddComponent<Image>();
+        panelImg.color = new Color(0.08f, 0.1f, 0.15f, 0.9f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = new Vector2(0.5f, 1f);
+        panelRect.anchorMax = new Vector2(0.5f, 1f);
+        panelRect.pivot = new Vector2(0.5f, 1f);
+        panelRect.anchoredPosition = new Vector2(0, -90);
+        panelRect.sizeDelta = new Vector2(500, 120);
+
+        GameObject textObj = new GameObject("RearrangeText");
+        textObj.transform.SetParent(rearrangePanel.transform, false);
+        rearrangeText = textObj.AddComponent<TextMeshProUGUI>();
+        rearrangeText.fontSize = 24;
+        rearrangeText.alignment = TextAlignmentOptions.Center;
+        rearrangeText.color = new Color(0.5f, 0.8f, 1f);
+        rearrangeText.fontStyle = FontStyles.Bold;
+        var textRect = rearrangeText.rectTransform;
+        textRect.anchorMin = new Vector2(0, 0.5f);
+        textRect.anchorMax = new Vector2(1, 1);
+        textRect.offsetMin = new Vector2(10, 0);
+        textRect.offsetMax = new Vector2(-10, -5);
+
+        CreateButton(rearrangePanel, "FinishRearrangeBtn", "Done", new Vector2(0, -35),
+            () => BluffyManager.Instance.FinishRearrange(), 180);
+
+        rearrangePanel.SetActive(false);
+    }
+
+    // Bluffy panel show/hide methods
+
+    public void ShowSetupPanel(PieceColor color)
+    {
+        string colorName = color == PieceColor.White ? "White" : "Black";
+        setupText.text = $"{colorName}: Arrange your back rank\nClick two big pieces to swap them";
+        setupPanel.SetActive(true);
+    }
+
+    public void HideSetupPanel()
+    {
+        setupPanel.SetActive(false);
+    }
+
+    public void ShowPassDevicePanel(PieceColor targetColor)
+    {
+        string colorName = targetColor == PieceColor.White ? "White" : "Black";
+        passDeviceText.text = $"Pass the device to {colorName}";
+        passDevicePanel.SetActive(true);
+    }
+
+    public void HidePassDevicePanel()
+    {
+        passDevicePanel.SetActive(false);
+    }
+
+    public void ShowBluffPanel()
+    {
+        bluffPanel.SetActive(true);
+    }
+
+    public void HideBluffPanel()
+    {
+        bluffPanel.SetActive(false);
+    }
+
+    public void ShowSacrificePanel(PieceColor color)
+    {
+        string colorName = color == PieceColor.White ? "White" : "Black";
+        sacrificeText.text = $"{colorName}: Select a big piece to sacrifice";
+        sacrificePanel.SetActive(true);
+    }
+
+    public void HideSacrificePanel()
+    {
+        sacrificePanel.SetActive(false);
+    }
+
+    public void ShowRearrangePanel(PieceColor color)
+    {
+        string colorName = color == PieceColor.White ? "White" : "Black";
+        rearrangeText.text = $"{colorName}: Swap your moved piece\nwith another big piece, or Done";
+        rearrangePanel.SetActive(true);
+    }
+
+    public void HideRearrangePanel()
+    {
+        rearrangePanel.SetActive(false);
+    }
+
+    public void UpdateBluffyTurnText(PieceColor color)
+    {
+        string colorName = color == PieceColor.White ? "White" : "Black";
+        turnText.text = $"[Bluffy] {colorName}'s Turn";
+        turnText.color = Color.white;
+    }
+
+    public void ShowBluffyGameOver(PieceColor winner)
+    {
+        string winnerName = winner == PieceColor.White ? "White" : "Black";
+        gameOverText.text = $"King Captured!\n{winnerName} Wins!";
+        gameOverPanel.SetActive(true);
+    }
+
+    // ─── Info Panel ───
+
+    private void CreateInfoPanel(GameObject parent)
+    {
+        infoPanel = new GameObject("InfoPanel");
+        infoPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = infoPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.08f, 0.08f, 0.12f, 0.95f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+        panelRect.sizeDelta = new Vector2(550, 200);
+
+        GameObject textObj = new GameObject("InfoText");
+        textObj.transform.SetParent(infoPanel.transform, false);
+        infoText = textObj.AddComponent<TextMeshProUGUI>();
+        infoText.fontSize = 28;
+        infoText.alignment = TextAlignmentOptions.Center;
+        infoText.color = Color.white;
+        infoText.fontStyle = FontStyles.Bold;
+        var textRect = infoText.rectTransform;
+        textRect.anchorMin = new Vector2(0, 0.4f);
+        textRect.anchorMax = new Vector2(1, 1);
+        textRect.offsetMin = new Vector2(20, 0);
+        textRect.offsetMax = new Vector2(-20, -15);
+
+        CreateButton(infoPanel, "InfoOkBtn", "OK", new Vector2(0, -60),
+            () => {
+                infoPanel.SetActive(false);
+                infoDismissAction?.Invoke();
+                infoDismissAction = null;
+            }, 160);
+
+        infoPanel.SetActive(false);
+    }
+
+    public void ShowInfoPanel(string message, System.Action onDismiss = null)
+    {
+        infoText.text = message;
+        infoDismissAction = onDismiss;
+        infoPanel.SetActive(true);
+    }
+
+    public void HideInfoPanel()
+    {
+        infoPanel.SetActive(false);
+        infoDismissAction = null;
+    }
+
+    public void HideBluffyPanels()
+    {
+        HideSetupPanel();
+        HidePassDevicePanel();
+        HideBluffPanel();
+        HideSacrificePanel();
+        HideRearrangePanel();
+        HideInfoPanel();
+        HideOnlinePanels();
     }
 }

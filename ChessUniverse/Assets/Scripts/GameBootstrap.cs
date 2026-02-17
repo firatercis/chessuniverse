@@ -11,6 +11,7 @@ public static class GameBootstrap
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void Init()
     {
+        Application.targetFrameRate = 60;
         // Create UI Manager
         GameObject uiObj = new GameObject("UIManager");
         uiObj.AddComponent<UIManager>();
@@ -35,6 +36,21 @@ public static class GameBootstrap
         GameObject aiObj = new GameObject("ChessAI");
         aiObj.AddComponent<ChessAI>();
         Object.DontDestroyOnLoad(aiObj);
+
+        // Create Bluffy Manager
+        GameObject bluffyObj = new GameObject("BluffyManager");
+        bluffyObj.AddComponent<BluffyManager>();
+        Object.DontDestroyOnLoad(bluffyObj);
+
+        // Create Bluffy AI
+        GameObject bluffyAiObj = new GameObject("BluffyAI");
+        bluffyAiObj.AddComponent<BluffyAI>();
+        Object.DontDestroyOnLoad(bluffyAiObj);
+
+        // Create Network Manager
+        GameObject netObj = new GameObject("NetworkManager");
+        netObj.AddComponent<NetworkManager>();
+        Object.DontDestroyOnLoad(netObj);
 
         // Create Game Manager
         GameObject gmObj = new GameObject("GameManager");

@@ -33,8 +33,9 @@ public class MoveValidator : MonoBehaviour
             }
         }
 
-        // Castling
-        if (piece.type == PieceType.King && !piece.hasMoved)
+        // Castling (not in Bluffy mode)
+        if (piece.type == PieceType.King && !piece.hasMoved
+            && GameBootstrap.CurrentMode != GameMode.BluffyChess)
         {
             // Kingside
             if (CanCastle(piece, board, true))
@@ -151,6 +152,9 @@ public class MoveValidator : MonoBehaviour
 
     public bool IsKingInCheck(PieceColor color, ChessPiece[,] board)
     {
+        if (GameBootstrap.CurrentMode == GameMode.BluffyChess)
+            return false;
+
         Vector2Int kingPos = FindKing(color, board);
         if (kingPos.x == -1) return false;
 
@@ -177,6 +181,9 @@ public class MoveValidator : MonoBehaviour
 
     public bool HasAnyLegalMove(PieceColor color, ChessPiece[,] board, Vector2Int? enPassantTarget)
     {
+        if (GameBootstrap.CurrentMode == GameMode.BluffyChess)
+            return true;
+
         for (int x = 0; x < 8; x++)
         {
             for (int y = 0; y < 8; y++)

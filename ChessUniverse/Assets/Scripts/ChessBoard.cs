@@ -10,12 +10,20 @@ public class ChessBoard : MonoBehaviour
     public Color captureHighlightColor = new Color(0.9f, 0.3f, 0.3f, 0.6f);
     public Color checkHighlightColor = new Color(0.95f, 0.2f, 0.2f, 0.7f);
     public Color plantHighlightColor = new Color(0.95f, 0.85f, 0.2f, 0.6f);
+    public Color lastMoveHighlightColor = new Color(0.85f, 0.75f, 0.3f, 0.3f);
 
     public ChessPiece[,] board = new ChessPiece[8, 8];
     private GameObject[,] squares = new GameObject[8, 8];
     private SpriteRenderer[,] squareRenderers = new SpriteRenderer[8, 8];
     private GameObject[,] highlights = new GameObject[8, 8];
     private SpriteRenderer[,] highlightRenderers = new SpriteRenderer[8, 8];
+
+    public bool isFlipped { get; private set; }
+
+    // Last move tracking
+    private Vector2Int lastMoveFrom;
+    private Vector2Int lastMoveTo;
+    private bool hasLastMove;
 
     private Sprite lightSquareSprite;
     private Sprite darkSquareSprite;
@@ -34,7 +42,6 @@ public class ChessBoard : MonoBehaviour
         {
             for (int y = 0; y < 8; y++)
             {
-                // Square
                 GameObject sq = new GameObject($"Square_{x}_{y}");
                 sq.transform.parent = transform;
                 sq.transform.position = new Vector3(x, y, 0);
@@ -45,7 +52,6 @@ public class ChessBoard : MonoBehaviour
                 if (sqSprite != null)
                 {
                     sr.sprite = sqSprite;
-                    // Scale square sprite to 1 world unit
                     float spriteWorldSize = sqSprite.rect.width / sqSprite.pixelsPerUnit;
                     float scale = 1f / spriteWorldSize;
                     sq.transform.localScale = new Vector3(scale, scale, 1f);
@@ -60,7 +66,6 @@ public class ChessBoard : MonoBehaviour
                 squares[x, y] = sq;
                 squareRenderers[x, y] = sr;
 
-                // Highlight overlay
                 GameObject hl = new GameObject($"Highlight_{x}_{y}");
                 hl.transform.parent = sq.transform;
                 hl.transform.localPosition = Vector3.zero;
@@ -71,7 +76,6 @@ public class ChessBoard : MonoBehaviour
                 highlights[x, y] = hl;
                 highlightRenderers[x, y] = hlSr;
 
-                // Collider for click detection
                 var col = sq.AddComponent<BoxCollider2D>();
                 col.size = Vector2.one / sq.transform.localScale.x;
             }
@@ -81,36 +85,38 @@ public class ChessBoard : MonoBehaviour
     public void SetupPieces()
     {
         ClearAllPieces();
+        hasLastMove = false;
 
         if (GameBootstrap.CurrentMode == GameMode.SeedChess)
         {
-            // Seed Chess: only 2 kings
             CreatePiece(PieceType.King, PieceColor.White, 4, 0);
             CreatePiece(PieceType.King, PieceColor.Black, 4, 7);
             return;
         }
 
-        // Classic: full setup
-        // Pawns
         for (int x = 0; x < 8; x++)
         {
             CreatePiece(PieceType.Pawn, PieceColor.White, x, 1);
             CreatePiece(PieceType.Pawn, PieceColor.Black, x, 6);
         }
 
-        // Back ranks
         PieceType[] backRank = { PieceType.Rook, PieceType.Knight, PieceType.Bishop, PieceType.Queen, PieceType.King, PieceType.Bishop, PieceType.Knight, PieceType.Rook };
         for (int x = 0; x < 8; x++)
         {
             CreatePiece(backRank[x], PieceColor.White, x, 0);
             CreatePiece(backRank[x], PieceColor.Black, x, 7);
         }
+
+        if (GameBootstrap.CurrentMode == GameMode.BluffyChess)
+        {
+            BluffyManager.Instance.StartSetupPhase();
+        }
     }
 
     public ChessPiece CreatePiece(PieceType type, PieceColor color, int x, int y)
     {
         GameObject pieceObj = new GameObject($"{color}_{type}");
-        pieceObj.transform.position = new Vector3(x, y, 0);
+        pieceObj.transform.position = VisualPos(x, y);
 
         var piece = pieceObj.AddComponent<ChessPiece>();
         piece.Init(type, color, x, y);
@@ -130,17 +136,42 @@ public class ChessBoard : MonoBehaviour
         }
     }
 
+    public void SetLastMove(Vector2Int from, Vector2Int to)
+    {
+        lastMoveFrom = from;
+        lastMoveTo = to;
+        hasLastMove = true;
+    }
+
     public void MovePiece(ChessPiece piece, int toX, int toY)
     {
+        Vector2Int from = new Vector2Int(piece.x, piece.y);
         board[piece.x, piece.y] = null;
         if (board[toX, toY] != null)
             RemovePiece(toX, toY);
         board[toX, toY] = piece;
         piece.SetPosition(toX, toY);
+        SetLastMove(from, new Vector2Int(toX, toY));
+    }
+
+    public ChessPiece MovePieceBluffy(ChessPiece piece, int toX, int toY)
+    {
+        Vector2Int from = new Vector2Int(piece.x, piece.y);
+        board[piece.x, piece.y] = null;
+        ChessPiece captured = board[toX, toY];
+        if (captured != null)
+        {
+            captured.gameObject.SetActive(false);
+        }
+        board[toX, toY] = piece;
+        piece.SetPosition(toX, toY);
+        SetLastMove(from, new Vector2Int(toX, toY));
+        return captured;
     }
 
     public void ClearAllPieces()
     {
+        hasLastMove = false;
         for (int x = 0; x < 8; x++)
         {
             for (int y = 0; y < 8; y++)
@@ -159,6 +190,13 @@ public class ChessBoard : MonoBehaviour
         for (int x = 0; x < 8; x++)
             for (int y = 0; y < 8; y++)
                 highlightRenderers[x, y].color = Color.clear;
+
+        // Re-apply persistent last move highlight
+        if (hasLastMove)
+        {
+            highlightRenderers[lastMoveFrom.x, lastMoveFrom.y].color = lastMoveHighlightColor;
+            highlightRenderers[lastMoveTo.x, lastMoveTo.y].color = lastMoveHighlightColor;
+        }
     }
 
     public void HighlightSquare(int x, int y, Color color)
@@ -166,13 +204,45 @@ public class ChessBoard : MonoBehaviour
         highlightRenderers[x, y].color = color;
     }
 
+    public Vector3 VisualPos(int x, int y)
+    {
+        if (isFlipped)
+            return new Vector3(7 - x, 7 - y, 0);
+        return new Vector3(x, y, 0);
+    }
+
     public Vector2Int? GetSquareFromWorldPos(Vector3 worldPos)
     {
-        int x = Mathf.RoundToInt(worldPos.x);
-        int y = Mathf.RoundToInt(worldPos.y);
+        int vx = Mathf.RoundToInt(worldPos.x);
+        int vy = Mathf.RoundToInt(worldPos.y);
+        int x = isFlipped ? 7 - vx : vx;
+        int y = isFlipped ? 7 - vy : vy;
         if (x >= 0 && x < 8 && y >= 0 && y < 8)
             return new Vector2Int(x, y);
         return null;
+    }
+
+    public void SetFlipped(bool flipped)
+    {
+        if (isFlipped == flipped) return;
+        isFlipped = flipped;
+        RefreshVisualPositions();
+    }
+
+    private void RefreshVisualPositions()
+    {
+        for (int x = 0; x < 8; x++)
+        {
+            for (int y = 0; y < 8; y++)
+            {
+                if (squares[x, y] != null)
+                    squares[x, y].transform.position = VisualPos(x, y);
+
+                ChessPiece p = board[x, y];
+                if (p != null)
+                    p.transform.position = VisualPos(x, y);
+            }
+        }
     }
 
     private Sprite GetHighlightSprite()

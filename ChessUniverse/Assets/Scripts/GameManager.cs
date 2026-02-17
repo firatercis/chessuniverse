@@ -21,15 +21,19 @@ public class GameManager : MonoBehaviour
     public Vector2Int? enPassantTarget { get; private set; }
     private bool waitingForPromotion;
     private ChessPiece promotingPawn;
+    private Vector2Int promotionMoveFrom;
 
     // Play mode
-    private PlayMode currentPlayMode = PlayMode.Local;
+    public PlayMode currentPlayMode = PlayMode.Local;
     private bool waitingForAI;
 
     // Seed Chess state
     private bool isPlantingMode;
     private PieceType pendingSeedType;
     private bool showingMenu = true;
+
+    private bool isBluffyMode => GameBootstrap.CurrentMode == GameMode.BluffyChess;
+    private bool isOnline => currentPlayMode == PlayMode.Online;
 
     private Camera mainCam;
 
@@ -43,7 +47,6 @@ public class GameManager : MonoBehaviour
         mainCam = Camera.main;
         SetupCamera();
         ChessBoard.Instance.CreateBoard();
-        // Show main menu instead of starting directly
         UIManager.Instance.ShowMainMenu();
     }
 
@@ -66,8 +69,18 @@ public class GameManager : MonoBehaviour
 
         ChessAI.Instance.ResetHistory();
         SeedManager.Instance.ClearAll();
+
+        // Online: guest sees board flipped (Black at bottom)
+        if (isOnline && !NetworkManager.Instance.IsHost)
+            ChessBoard.Instance.SetFlipped(true);
+        else
+            ChessBoard.Instance.SetFlipped(false);
+
         ChessBoard.Instance.SetupPieces();
-        UIManager.Instance.UpdateTurnText(currentTurn);
+
+        if (!isBluffyMode)
+            UIManager.Instance.UpdateTurnText(currentTurn);
+        // Bluffy mode: SetupPieces calls BluffyManager.StartSetupPhase which handles UI
     }
 
     private void SetupCamera()
@@ -85,8 +98,56 @@ public class GameManager : MonoBehaviour
         if (gameState == GameState.Checkmate || gameState == GameState.Stalemate) return;
         if (waitingForAI) return;
 
-        // AI turn: trigger automatically
+        // Online mode: block input when it's opponent's turn
+        if (isOnline && !isBluffyMode && !NetworkManager.Instance.IsMyTurn()) return;
+
+        // Bluffy mode: check phase-based input blocking
+        if (isBluffyMode)
+        {
+            var phase = BluffyManager.Instance.currentPhase;
+            if (phase == BluffyPhase.PassDevice
+                || phase == BluffyPhase.WaitingBluff
+                || phase == BluffyPhase.GameOver)
+                return;
+
+            // SP Bluffy: block input during AI's turn
+            if (currentPlayMode == PlayMode.SinglePlayer
+                && currentTurn == PieceColor.Black
+                && phase == BluffyPhase.Playing)
+                return;
+
+            // Online Bluffy: block input during opponent's turn (playing phase)
+            if (isOnline && phase == BluffyPhase.Playing && !NetworkManager.Instance.IsMyTurn())
+                return;
+
+            if (Input.GetMouseButtonDown(0))
+            {
+                Vector3 worldPos = mainCam.ScreenToWorldPoint(Input.mousePosition);
+                Vector2Int? clicked = ChessBoard.Instance.GetSquareFromWorldPos(worldPos);
+                if (!clicked.HasValue) return;
+
+                switch (phase)
+                {
+                    case BluffyPhase.Setup:
+                        BluffyManager.Instance.HandleSetupClick(clicked.Value);
+                        break;
+                    case BluffyPhase.Playing:
+                        HandleSquareClick(clicked.Value);
+                        break;
+                    case BluffyPhase.Sacrifice:
+                        BluffyManager.Instance.HandleSacrificeClick(clicked.Value);
+                        break;
+                    case BluffyPhase.Rearrange:
+                        BluffyManager.Instance.HandleRearrangeClick(clicked.Value);
+                        break;
+                }
+            }
+            return;
+        }
+
+        // AI turn: trigger automatically (not for Bluffy - BluffyManager handles AI)
         if (currentPlayMode == PlayMode.SinglePlayer
+            && !isBluffyMode
             && currentTurn == PieceColor.Black
             && gameState != GameState.Checkmate
             && gameState != GameState.Stalemate)
@@ -117,11 +178,12 @@ public class GameManager : MonoBehaviour
             if (plantable.Contains(pos))
             {
                 SeedManager.Instance.PlantSeed(pos.x, pos.y, currentTurn, pendingSeedType);
+                if (isOnline)
+                    NetworkManager.Instance.PushAction(NetworkAction.SeedPlant(pos.x, pos.y, pendingSeedType.ToString()));
                 DeselectPiece();
                 EndTurn();
                 return;
             }
-            // Clicking elsewhere exits planting mode
             ExitPlantingMode();
             return;
         }
@@ -157,7 +219,6 @@ public class GameManager : MonoBehaviour
         foreach (var move in currentLegalMoves)
         {
             bool isCapture = ChessBoard.Instance.board[move.x, move.y] != null;
-            // En passant is also a capture
             if (piece.type == PieceType.Pawn && enPassantTarget.HasValue && move == enPassantTarget.Value)
                 isCapture = true;
 
@@ -193,7 +254,6 @@ public class GameManager : MonoBehaviour
     {
         if (selectedPiece == null || selectedPiece.type != PieceType.King) return;
 
-        // If already planting the same type, toggle off
         if (isPlantingMode && pendingSeedType == type)
         {
             ExitPlantingMode();
@@ -204,10 +264,8 @@ public class GameManager : MonoBehaviour
         isPlantingMode = true;
         ChessBoard.Instance.ClearHighlights();
 
-        // Highlight king
         ChessBoard.Instance.HighlightSquare(selectedPiece.x, selectedPiece.y, ChessBoard.Instance.selectedColor);
 
-        // Highlight plantable squares
         var plantable = SeedManager.Instance.GetPlantableSquares(selectedPiece);
         foreach (var sq in plantable)
             ChessBoard.Instance.HighlightSquare(sq.x, sq.y, ChessBoard.Instance.plantHighlightColor);
@@ -217,28 +275,32 @@ public class GameManager : MonoBehaviour
     {
         isPlantingMode = false;
         if (selectedPiece != null)
-            SelectPiece(selectedPiece); // Re-show normal move highlights
+            SelectPiece(selectedPiece);
         else
             DeselectPiece();
     }
 
     private void ExecuteMove(ChessPiece piece, Vector2Int target)
     {
+        // Bluffy mode: special handling
+        if (isBluffyMode)
+        {
+            ExecuteBluffyMove(piece, target);
+            return;
+        }
+
         // Record move for opening book
-        ChessAI.Instance.RecordMove(new Vector2Int(piece.x, piece.y), target);
+        Vector2Int moveFrom = new Vector2Int(piece.x, piece.y);
+        ChessAI.Instance.RecordMove(moveFrom, target);
 
         bool isPawnDoubleMove = false;
         bool isEnPassant = false;
         bool isCastling = false;
 
-        // Detect special moves
         if (piece.type == PieceType.Pawn)
         {
-            // Double move
             if (Mathf.Abs(target.y - piece.y) == 2)
                 isPawnDoubleMove = true;
-
-            // En passant capture
             if (enPassantTarget.HasValue && target == enPassantTarget.Value)
                 isEnPassant = true;
         }
@@ -246,7 +308,6 @@ public class GameManager : MonoBehaviour
         if (piece.type == PieceType.King && Mathf.Abs(target.x - piece.x) == 2)
             isCastling = true;
 
-        // Execute the move
         if (isEnPassant)
         {
             int capturedY = piece.color == PieceColor.White ? target.y - 1 : target.y + 1;
@@ -264,15 +325,14 @@ public class GameManager : MonoBehaviour
 
         ChessBoard.Instance.MovePiece(piece, target.x, target.y);
 
-        // Update en passant target
         enPassantTarget = isPawnDoubleMove
             ? new Vector2Int(piece.x, piece.color == PieceColor.White ? piece.y - 1 : piece.y + 1)
             : null;
 
-        // Check for pawn promotion
         if (piece.type == PieceType.Pawn && (target.y == 0 || target.y == 7))
         {
             promotingPawn = piece;
+            promotionMoveFrom = moveFrom;
             waitingForPromotion = true;
             UIManager.Instance.ShowPromotionPanel(piece.color);
             ChessBoard.Instance.ClearHighlights();
@@ -280,8 +340,129 @@ public class GameManager : MonoBehaviour
             return;
         }
 
+        // Online: push move action
+        if (isOnline)
+            NetworkManager.Instance.PushAction(NetworkAction.Move(moveFrom.x, moveFrom.y, target.x, target.y));
+
         DeselectPiece();
         EndTurn();
+    }
+
+    private bool applyingRemoteAction;
+    public void SetRemoteActionFlag(bool value) { applyingRemoteAction = value; }
+
+    private void ExecuteBluffyMove(ChessPiece piece, Vector2Int target)
+    {
+        bool isBigPiece = piece.type != PieceType.Pawn;
+        Vector2Int from = new Vector2Int(piece.x, piece.y);
+        bool hadMoved = piece.hasMoved;
+
+        // Online: push move action (before applying locally)
+        if (isOnline && !applyingRemoteAction)
+            NetworkManager.Instance.PushAction(NetworkAction.Move(from.x, from.y, target.x, target.y));
+
+        // Use bluffy move to hide captured piece instead of destroying
+        ChessPiece captured = ChessBoard.Instance.MovePieceBluffy(piece, target.x, target.y);
+
+        // Unregister captured piece from BluffyManager (but keep the object for undo)
+        if (captured != null)
+            BluffyManager.Instance.UnregisterPiece(captured);
+
+        // Handle pawn promotion in Bluffy mode
+        if (piece.type == PieceType.Pawn && (target.y == 0 || target.y == 7))
+        {
+            // For Bluffy mode, auto-promote to Queen (no bluff on pawns anyway)
+            int px = piece.x;
+            int py = piece.y;
+            PieceColor pcolor = piece.color;
+            PieceType realType = BluffyManager.Instance.realTypes.ContainsKey(piece) ?
+                BluffyManager.Instance.realTypes[piece] : PieceType.Pawn;
+            BluffyManager.Instance.UnregisterPiece(piece);
+            Destroy(piece.gameObject);
+            ChessBoard.Instance.board[px, py] = null;
+
+            var newPiece = ChessBoard.Instance.CreatePiece(PieceType.Queen, pcolor, px, py);
+            BluffyManager.Instance.RegisterPiece(newPiece, PieceType.Queen,
+                BluffyManager.Instance.maskIndices.Count);
+
+            // Destroy captured permanently for pawn moves (no bluff)
+            if (captured != null)
+            {
+                Destroy(captured.gameObject);
+                captured = null;
+            }
+
+            DeselectPiece();
+            BluffyManager.Instance.EndBluffyTurn(false, pcolor);
+            return;
+        }
+
+        if (isBigPiece)
+        {
+            // Store pending move for bluff resolution
+            BluffyManager.Instance.StorePendingMove(piece, from, target, captured, hadMoved);
+        }
+        else
+        {
+            // Pawn move - destroy captured permanently (no bluff possible)
+            if (captured != null)
+            {
+                Destroy(captured.gameObject);
+                captured = null;
+            }
+        }
+
+        DeselectPiece();
+        BluffyManager.Instance.EndBluffyTurn(isBigPiece, piece.color);
+    }
+
+    public void ExecuteBluffyMoveForAI(ChessPiece piece, Vector2Int target)
+    {
+        ExecuteBluffyMove(piece, target);
+    }
+
+    public void OnBluffCalled()
+    {
+        // Online: push bluff call (only if local player initiated it)
+        if (isOnline && !applyingRemoteAction)
+            NetworkManager.Instance.PushAction(NetworkAction.BluffCall());
+
+        UIManager.Instance.HideBluffPanel();
+
+        // Show dramatic "BLUFF!!" splash, then reveal piece and resolve
+        UIManager.Instance.ShowSplashText("BLUFF !!", 1.2f, () =>
+        {
+            bool isLegal = BluffyManager.Instance.ValidateBluff();
+
+            // Reveal the real piece behind the mask
+            var piece = BluffyManager.Instance.PendingMovePiece;
+            if (piece != null) piece.HideMask();
+
+            // Show result splash with revealed piece visible
+            if (!isLegal)
+            {
+                UIManager.Instance.ShowSplashText("Caught Bluffing!", 1.5f, () =>
+                {
+                    BluffyManager.Instance.ResolveCaughtBluffing();
+                }, new Color(1f, 0.3f, 0.1f));
+            }
+            else
+            {
+                UIManager.Instance.ShowSplashText("Not a Bluff!", 1.5f, () =>
+                {
+                    BluffyManager.Instance.ResolveSuccessfulDefense();
+                }, new Color(0.2f, 0.9f, 0.3f));
+            }
+        });
+    }
+
+    public void OnMoveAccepted()
+    {
+        // Online: push accept (only if local player initiated it)
+        if (isOnline && !applyingRemoteAction)
+            NetworkManager.Instance.PushAction(NetworkAction.BluffAccept());
+
+        BluffyManager.Instance.OnMoveAccepted();
     }
 
     public void OnPromotionSelected(PieceType type)
@@ -295,6 +476,11 @@ public class GameManager : MonoBehaviour
         ChessBoard.Instance.RemovePiece(x, y);
         ChessBoard.Instance.CreatePiece(type, color, x, y);
 
+        // Online: push move with promotion
+        if (isOnline)
+            NetworkManager.Instance.PushAction(
+                NetworkAction.Move(promotionMoveFrom.x, promotionMoveFrom.y, x, y, type.ToString()));
+
         promotingPawn = null;
         waitingForPromotion = false;
         UIManager.Instance.HidePromotionPanel();
@@ -304,7 +490,6 @@ public class GameManager : MonoBehaviour
 
     public void ApplyAIMove(ChessPiece piece, Vector2Int target, PieceType? promotionType)
     {
-        // Record move for opening book
         ChessAI.Instance.RecordMove(new Vector2Int(piece.x, piece.y), target);
 
         bool isPawnDoubleMove = false;
@@ -343,7 +528,6 @@ public class GameManager : MonoBehaviour
             ? new Vector2Int(piece.x, piece.color == PieceColor.White ? piece.y - 1 : piece.y + 1)
             : null;
 
-        // AI promotion (no popup)
         if (promotionType.HasValue)
         {
             int px = piece.x;
@@ -362,6 +546,85 @@ public class GameManager : MonoBehaviour
     {
         SeedManager.Instance.PlantSeed(square.x, square.y, PieceColor.Black, seedType);
         waitingForAI = false;
+        DeselectPiece();
+        EndTurn();
+    }
+
+    // ─── Online Remote Actions ───
+
+    public void ApplyRemoteMove(int fromX, int fromY, int toX, int toY, PieceType? promotionType)
+    {
+        ChessPiece piece = ChessBoard.Instance.board[fromX, fromY];
+        if (piece == null) return;
+
+        applyingRemoteAction = true;
+
+        if (isBluffyMode)
+        {
+            Vector2Int target = new Vector2Int(toX, toY);
+            ExecuteBluffyMove(piece, target);
+            applyingRemoteAction = false;
+            return;
+        }
+
+        // Reuse AI move logic (handles en passant, castling, promotion)
+        Vector2Int moveTarget = new Vector2Int(toX, toY);
+        ChessAI.Instance.RecordMove(new Vector2Int(fromX, fromY), moveTarget);
+
+        bool isPawnDoubleMove = false;
+        bool isEnPassant = false;
+        bool isCastling = false;
+
+        if (piece.type == PieceType.Pawn)
+        {
+            if (Mathf.Abs(toY - piece.y) == 2)
+                isPawnDoubleMove = true;
+            if (enPassantTarget.HasValue && moveTarget == enPassantTarget.Value)
+                isEnPassant = true;
+        }
+
+        if (piece.type == PieceType.King && Mathf.Abs(toX - piece.x) == 2)
+            isCastling = true;
+
+        if (isEnPassant)
+        {
+            int capturedY = piece.color == PieceColor.White ? toY - 1 : toY + 1;
+            ChessBoard.Instance.RemovePiece(toX, capturedY);
+        }
+
+        if (isCastling)
+        {
+            bool kingside = toX > piece.x;
+            int rookFromX = kingside ? 7 : 0;
+            int rookToX = kingside ? toX - 1 : toX + 1;
+            ChessPiece rook = ChessBoard.Instance.board[rookFromX, piece.y];
+            ChessBoard.Instance.MovePiece(rook, rookToX, piece.y);
+        }
+
+        ChessBoard.Instance.MovePiece(piece, toX, toY);
+
+        enPassantTarget = isPawnDoubleMove
+            ? new Vector2Int(piece.x, piece.color == PieceColor.White ? piece.y - 1 : piece.y + 1)
+            : null;
+
+        if (promotionType.HasValue)
+        {
+            int px = piece.x;
+            int py = piece.y;
+            PieceColor pcolor = piece.color;
+            ChessBoard.Instance.RemovePiece(px, py);
+            ChessBoard.Instance.CreatePiece(promotionType.Value, pcolor, px, py);
+        }
+
+        applyingRemoteAction = false;
+        DeselectPiece();
+        EndTurn();
+    }
+
+    public void ApplyRemoteSeedPlant(int x, int y, PieceType seedType)
+    {
+        PieceColor plantColor = currentTurn;
+        SeedManager.Instance.PlantSeed(x, y, plantColor, seedType);
         DeselectPiece();
         EndTurn();
     }
@@ -423,6 +686,10 @@ public class GameManager : MonoBehaviour
 
     public void RestartGame()
     {
+        // Leave online room if connected
+        if (isOnline && NetworkManager.Instance.IsOnline)
+            NetworkManager.Instance.LeaveRoom();
+
         currentTurn = PieceColor.White;
         gameState = GameState.Playing;
         selectedPiece = null;
@@ -441,6 +708,8 @@ public class GameManager : MonoBehaviour
         UIManager.Instance.HideGameOver();
         UIManager.Instance.HidePromotionPanel();
         UIManager.Instance.HideSeedButtons();
+        UIManager.Instance.HideBluffyPanels();
+        ChessBoard.Instance.SetFlipped(false);
         UIManager.Instance.ShowMainMenu();
     }
 }

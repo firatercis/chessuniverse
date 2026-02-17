@@ -1,5 +1,6 @@
 public enum GameMode
 {
     Classic,
-    SeedChess
+    SeedChess,
+    BluffyChess
 }
