@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -31,6 +32,31 @@ public class UIManager : MonoBehaviour
     private TextMeshProUGUI infoText;
     private System.Action infoDismissAction;
 
+    // Rules dialog
+    private GameObject rulesPanel;
+    private TextMeshProUGUI rulesText;
+
+    // Orientation
+    private CanvasScaler canvasScaler;
+    private bool lastPortrait;
+
+    // Player profile panel
+    private GameObject profilePanel;
+    private TMP_InputField profileNameInput;
+
+    // Admin panel
+    private const string AdminPassword = "chess2025";
+    private GameObject adminPasswordPanel;
+    private TMP_InputField adminPasswordInput;
+    private TextMeshProUGUI adminPasswordError;
+    private GameObject adminGameListPanel;
+    private GameObject adminGameListContent;
+
+    // Replay controls
+    private GameObject replayControlsPanel;
+    private TextMeshProUGUI replayProgressText;
+    private Coroutine replayAutoCoroutine;
+
     // Splash text (dramatic bluff call)
     private GameObject splashPanel;
     private TextMeshProUGUI splashText;
@@ -52,6 +78,15 @@ public class UIManager : MonoBehaviour
         CreateUI();
     }
 
+    private void Update()
+    {
+        bool isPortrait = Screen.height > Screen.width;
+        if (isPortrait == lastPortrait) return;
+        lastPortrait = isPortrait;
+        canvasScaler.matchWidthOrHeight = isPortrait ? 1f : 0f;
+        GameManager.Instance?.UpdateCameraSize();
+    }
+
     private void CreateUI()
     {
         // Canvas
@@ -60,7 +95,10 @@ public class UIManager : MonoBehaviour
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 10;
         canvasObj.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        canvasObj.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1920, 1080);
+        canvasScaler = canvasObj.GetComponent<CanvasScaler>();
+        canvasScaler.referenceResolution = new Vector2(1920, 1080);
+        lastPortrait = Screen.height > Screen.width;
+        canvasScaler.matchWidthOrHeight = lastPortrait ? 1f : 0f;
         canvasObj.AddComponent<GraphicRaycaster>();
 
         // EventSystem (required for UI button clicks)
@@ -107,6 +145,13 @@ public class UIManager : MonoBehaviour
         CreateSacrificePanel(canvasObj);
         CreateRearrangePanel(canvasObj);
         CreateInfoPanel(canvasObj);
+        CreateRulesPanel(canvasObj);
+
+        // Profile + Admin + Replay (on top of everything)
+        CreateProfilePanel(canvasObj);
+        CreateAdminPasswordPanel(canvasObj);
+        CreateAdminGameListPanel(canvasObj);
+        CreateReplayControlsPanel(canvasObj);
     }
 
     private void CreateTurnIndicator(GameObject parent)
@@ -269,17 +314,66 @@ public class UIManager : MonoBehaviour
         titleRect.sizeDelta = new Vector2(600, 80);
         titleRect.anchoredPosition = new Vector2(0, 120);
 
+        // Player name subtitle
+        GameObject nameSubObj = new GameObject("PlayerNameSub");
+        nameSubObj.transform.SetParent(mainMenuPanel.transform, false);
+        var nameSub = nameSubObj.AddComponent<TextMeshProUGUI>();
+        nameSub.fontSize = 22;
+        nameSub.alignment = TextAlignmentOptions.Center;
+        nameSub.color = new Color(0.6f, 0.75f, 0.6f);
+        var nameSubRect = nameSub.rectTransform;
+        nameSubRect.anchorMin = new Vector2(0.5f, 0.5f);
+        nameSubRect.anchorMax = new Vector2(0.5f, 0.5f);
+        nameSubRect.sizeDelta = new Vector2(500, 30);
+        nameSubRect.anchoredPosition = new Vector2(0, 78);
+        // Name is populated dynamically in ShowMainMenu via UpdatePlayerNameDisplay
+        nameSub.text = $"Playing as: {PlayerPrefs.GetString("PlayerName", "")}";
+
         // Classic Chess button
         CreateButton(mainMenuPanel, "ClassicBtn", "Classic Chess", new Vector2(0, 20),
             () => { HideMainMenu(); ShowPlayerModePanel(GameMode.Classic); }, 300);
 
-        // Seed Chess button
+        // Seed Chess button + info
         CreateButton(mainMenuPanel, "SeedBtn", "Seed Chess", new Vector2(0, -50),
             () => { HideMainMenu(); ShowPlayerModePanel(GameMode.SeedChess); }, 300);
+        CreateInfoIcon(mainMenuPanel, new Vector2(180, -50), () => ShowRulesDialog(GameMode.SeedChess));
 
-        // Bluffy Chess button
+        // Bluffy Chess button + info
         CreateButton(mainMenuPanel, "BluffyBtn", "Bluffy Chess", new Vector2(0, -120),
             () => { HideMainMenu(); ShowPlayerModePanel(GameMode.BluffyChess); }, 300);
+        CreateInfoIcon(mainMenuPanel, new Vector2(180, -120), () => ShowRulesDialog(GameMode.BluffyChess));
+
+        // Change name button (small, bottom-right area)
+        var changeBtn = CreateButton(mainMenuPanel, "ChangeNameBtn", "Change Name", new Vector2(0, -200),
+            () => { HideMainMenu(); ShowProfilePanel(); }, 180);
+        changeBtn.GetComponent<Image>().color = new Color(0.25f, 0.25f, 0.35f);
+
+        // Admin gear button (bottom-left, subtle)
+        GameObject adminBtnObj = new GameObject("AdminBtn");
+        adminBtnObj.transform.SetParent(mainMenuPanel.transform, false);
+        var adminBtnImg = adminBtnObj.AddComponent<Image>();
+        adminBtnImg.color = new Color(0.2f, 0.2f, 0.2f, 0.6f);
+        var adminBtnRect = adminBtnImg.rectTransform;
+        adminBtnRect.anchorMin = new Vector2(0, 0);
+        adminBtnRect.anchorMax = new Vector2(0, 0);
+        adminBtnRect.pivot = new Vector2(0, 0);
+        adminBtnRect.anchoredPosition = new Vector2(20, 20);
+        adminBtnRect.sizeDelta = new Vector2(44, 44);
+        var adminBtn = adminBtnObj.AddComponent<Button>();
+        adminBtn.targetGraphic = adminBtnImg;
+        adminBtn.onClick.AddListener(() => ShowAdminPasswordPanel());
+        GameObject adminIconObj = new GameObject("AdminIcon");
+        adminIconObj.transform.SetParent(adminBtnObj.transform, false);
+        var adminIconText = adminIconObj.AddComponent<TextMeshProUGUI>();
+        adminIconText.text = "⚙";
+        adminIconText.fontSize = 22;
+        adminIconText.alignment = TextAlignmentOptions.Center;
+        adminIconText.color = new Color(0.6f, 0.6f, 0.6f);
+        var adminIconRect = adminIconText.rectTransform;
+        adminIconRect.anchorMin = Vector2.zero;
+        adminIconRect.anchorMax = Vector2.one;
+        adminIconRect.offsetMin = Vector2.zero;
+        adminIconRect.offsetMax = Vector2.zero;
 
         mainMenuPanel.SetActive(false);
     }
@@ -531,6 +625,15 @@ public class UIManager : MonoBehaviour
 
     public void ShowMainMenu()
     {
+        if (!PlayerPrefs.HasKey("PlayerName"))
+        {
+            ShowProfilePanel();
+            return;
+        }
+        // Refresh player name display
+        var nameSub = mainMenuPanel.transform.Find("PlayerNameSub")?.GetComponent<TextMeshProUGUI>();
+        if (nameSub != null)
+            nameSub.text = $"Playing as: {PlayerPrefs.GetString("PlayerName", "")}";
         mainMenuPanel.SetActive(true);
     }
 
@@ -547,6 +650,132 @@ public class UIManager : MonoBehaviour
     public void HideSeedButtons()
     {
         seedButtonsPanel.SetActive(false);
+    }
+
+    // ─── Rules Dialog ───
+
+    private void CreateInfoIcon(GameObject parent, Vector2 position, UnityEngine.Events.UnityAction onClick)
+    {
+        GameObject btnObj = new GameObject("InfoIcon");
+        btnObj.transform.SetParent(parent.transform, false);
+
+        var btnImg = btnObj.AddComponent<Image>();
+        btnImg.color = new Color(0.35f, 0.55f, 0.8f);
+
+        var btnRect = btnImg.rectTransform;
+        btnRect.anchorMin = new Vector2(0.5f, 0.5f);
+        btnRect.anchorMax = new Vector2(0.5f, 0.5f);
+        btnRect.sizeDelta = new Vector2(40, 40);
+        btnRect.anchoredPosition = position;
+
+        var button = btnObj.AddComponent<Button>();
+        button.targetGraphic = btnImg;
+        var colors = button.colors;
+        colors.highlightedColor = new Color(0.45f, 0.65f, 0.9f);
+        colors.pressedColor = new Color(0.25f, 0.4f, 0.6f);
+        button.colors = colors;
+        button.onClick.AddListener(onClick);
+
+        GameObject textObj = new GameObject("Text");
+        textObj.transform.SetParent(btnObj.transform, false);
+        var btnText = textObj.AddComponent<TextMeshProUGUI>();
+        btnText.text = "?";
+        btnText.fontSize = 26;
+        btnText.alignment = TextAlignmentOptions.Center;
+        btnText.color = Color.white;
+        btnText.fontStyle = FontStyles.Bold;
+        var textRect = btnText.rectTransform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+    }
+
+    private void CreateRulesPanel(GameObject parent)
+    {
+        rulesPanel = new GameObject("RulesPanel");
+        rulesPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = rulesPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.1f, 0.1f, 0.14f, 0.97f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+        panelRect.sizeDelta = new Vector2(700, 560);
+
+        // Title
+        GameObject titleObj = new GameObject("RulesTitle");
+        titleObj.transform.SetParent(rulesPanel.transform, false);
+        var titleText = titleObj.AddComponent<TextMeshProUGUI>();
+        titleText.fontSize = 32;
+        titleText.alignment = TextAlignmentOptions.Center;
+        titleText.color = new Color(0.4f, 0.8f, 1f);
+        titleText.fontStyle = FontStyles.Bold;
+        var titleRect = titleText.rectTransform;
+        titleRect.anchorMin = new Vector2(0, 1);
+        titleRect.anchorMax = new Vector2(1, 1);
+        titleRect.pivot = new Vector2(0.5f, 1f);
+        titleRect.anchoredPosition = new Vector2(0, -15);
+        titleRect.sizeDelta = new Vector2(0, 45);
+
+        // Body text
+        GameObject textObj = new GameObject("RulesBody");
+        textObj.transform.SetParent(rulesPanel.transform, false);
+        rulesText = textObj.AddComponent<TextMeshProUGUI>();
+        rulesText.fontSize = 20;
+        rulesText.alignment = TextAlignmentOptions.TopLeft;
+        rulesText.color = new Color(0.9f, 0.9f, 0.9f);
+        rulesText.lineSpacing = 4;
+        var textRect = rulesText.rectTransform;
+        textRect.anchorMin = new Vector2(0, 0);
+        textRect.anchorMax = new Vector2(1, 1);
+        textRect.offsetMin = new Vector2(30, 70);
+        textRect.offsetMax = new Vector2(-30, -65);
+
+        // Close button
+        CreateButton(rulesPanel, "CloseRulesBtn", "Close", new Vector2(0, -235),
+            () => rulesPanel.SetActive(false), 160);
+
+        rulesPanel.SetActive(false);
+    }
+
+    private void ShowRulesDialog(GameMode mode)
+    {
+        var titleText = rulesPanel.transform.Find("RulesTitle").GetComponent<TextMeshProUGUI>();
+
+        if (mode == GameMode.SeedChess)
+        {
+            titleText.text = "Seed Chess Rules";
+            rulesText.text =
+                "All standard chess rules apply, plus:\n\n" +
+                "<b>Planting:</b> The King can plant seeds on adjacent\n" +
+                "empty squares instead of moving.\n\n" +
+                "<b>Growth:</b> Seeds grow into pieces after a set\n" +
+                "number of your turns:\n" +
+                "  Pawn = 1, Knight = 3, Bishop = 3, Rook = 5, Queen = 9\n\n" +
+                "<b>Passable:</b> Seeds don't block movement.\n" +
+                "Any piece can move through or land on them.\n\n" +
+                "<b>Restriction:</b> You cannot plant while in check.";
+        }
+        else if (mode == GameMode.BluffyChess)
+        {
+            titleText.text = "Bluffy Chess Rules";
+            rulesText.text =
+                "<b>Setup:</b> Each player secretly arranges their\n" +
+                "back rank. Opponents see colored masks instead.\n\n" +
+                "<b>Movement:</b> All non-pawn pieces can move like\n" +
+                "any piece (Queen + Knight combined).\n\n" +
+                "<b>Bluff Call:</b> After a non-pawn move, the opponent\n" +
+                "can call \"Bluff!\" to challenge the move.\n\n" +
+                "<b>Caught Bluffing:</b> If the move was illegal for the\n" +
+                "real piece type, that piece is removed.\n\n" +
+                "<b>Wrong Call:</b> If the move was legal, the caller\n" +
+                "must sacrifice one of their non-pawn pieces.\n" +
+                "The mover may then swap their piece with another.\n\n" +
+                "<b>Win Condition:</b> Capture the opponent's King.";
+        }
+
+        rulesPanel.SetActive(true);
     }
 
     // ─── Splash Text ───
@@ -1245,5 +1474,593 @@ public class UIManager : MonoBehaviour
         HideRearrangePanel();
         HideInfoPanel();
         HideOnlinePanels();
+    }
+
+    // ─── Player Profile Panel ───
+
+    private void CreateProfilePanel(GameObject parent)
+    {
+        profilePanel = new GameObject("ProfilePanel");
+        profilePanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = profilePanel.AddComponent<Image>();
+        panelImg.color = new Color(0.08f, 0.08f, 0.12f, 0.98f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        // Title
+        GameObject titleObj = new GameObject("ProfileTitle");
+        titleObj.transform.SetParent(profilePanel.transform, false);
+        var titleText = titleObj.AddComponent<TextMeshProUGUI>();
+        titleText.text = "Chess Universe";
+        titleText.fontSize = 52;
+        titleText.alignment = TextAlignmentOptions.Center;
+        titleText.color = Color.white;
+        titleText.fontStyle = FontStyles.Bold;
+        var titleRect = titleText.rectTransform;
+        titleRect.anchorMin = new Vector2(0.5f, 0.5f);
+        titleRect.anchorMax = new Vector2(0.5f, 0.5f);
+        titleRect.sizeDelta = new Vector2(600, 70);
+        titleRect.anchoredPosition = new Vector2(0, 130);
+
+        // Subtitle
+        GameObject subObj = new GameObject("ProfileSub");
+        subObj.transform.SetParent(profilePanel.transform, false);
+        var subText = subObj.AddComponent<TextMeshProUGUI>();
+        subText.text = "What's your name?";
+        subText.fontSize = 28;
+        subText.alignment = TextAlignmentOptions.Center;
+        subText.color = new Color(0.75f, 0.85f, 0.75f);
+        var subRect = subText.rectTransform;
+        subRect.anchorMin = new Vector2(0.5f, 0.5f);
+        subRect.anchorMax = new Vector2(0.5f, 0.5f);
+        subRect.sizeDelta = new Vector2(500, 40);
+        subRect.anchoredPosition = new Vector2(0, 60);
+
+        // Input field
+        GameObject inputObj = new GameObject("NameInput");
+        inputObj.transform.SetParent(profilePanel.transform, false);
+        var inputImg = inputObj.AddComponent<Image>();
+        inputImg.color = new Color(0.18f, 0.18f, 0.24f);
+        var inputRect = inputImg.rectTransform;
+        inputRect.anchorMin = new Vector2(0.5f, 0.5f);
+        inputRect.anchorMax = new Vector2(0.5f, 0.5f);
+        inputRect.sizeDelta = new Vector2(360, 56);
+        inputRect.anchoredPosition = new Vector2(0, -10);
+
+        GameObject textAreaObj = new GameObject("Text Area");
+        textAreaObj.transform.SetParent(inputObj.transform, false);
+        var textAreaRect = textAreaObj.AddComponent<RectTransform>();
+        textAreaRect.anchorMin = Vector2.zero;
+        textAreaRect.anchorMax = Vector2.one;
+        textAreaRect.offsetMin = new Vector2(12, 6);
+        textAreaRect.offsetMax = new Vector2(-12, -6);
+
+        GameObject inputTextObj = new GameObject("Text");
+        inputTextObj.transform.SetParent(textAreaObj.transform, false);
+        var inputText = inputTextObj.AddComponent<TextMeshProUGUI>();
+        inputText.fontSize = 30;
+        inputText.alignment = TextAlignmentOptions.Center;
+        inputText.color = Color.white;
+        var inputTextRect = inputText.rectTransform;
+        inputTextRect.anchorMin = Vector2.zero;
+        inputTextRect.anchorMax = Vector2.one;
+        inputTextRect.offsetMin = Vector2.zero;
+        inputTextRect.offsetMax = Vector2.zero;
+
+        GameObject phObj = new GameObject("Placeholder");
+        phObj.transform.SetParent(textAreaObj.transform, false);
+        var phText = phObj.AddComponent<TextMeshProUGUI>();
+        phText.text = "Enter your name...";
+        phText.fontSize = 26;
+        phText.alignment = TextAlignmentOptions.Center;
+        phText.color = new Color(0.5f, 0.5f, 0.5f, 0.7f);
+        phText.fontStyle = FontStyles.Italic;
+        var phRect = phText.rectTransform;
+        phRect.anchorMin = Vector2.zero;
+        phRect.anchorMax = Vector2.one;
+        phRect.offsetMin = Vector2.zero;
+        phRect.offsetMax = Vector2.zero;
+
+        profileNameInput = inputObj.AddComponent<TMP_InputField>();
+        profileNameInput.textComponent = inputText;
+        profileNameInput.placeholder = phText;
+        profileNameInput.characterLimit = 20;
+        profileNameInput.textViewport = textAreaRect;
+        profileNameInput.onSubmit.AddListener((_) => OnProfileConfirm());
+
+        // Pre-fill existing name if changing
+        profileNameInput.text = PlayerPrefs.GetString("PlayerName", "");
+
+        // Confirm button
+        var confirmBtn = CreateButton(profilePanel, "ProfileConfirmBtn", "Let's Play!", new Vector2(0, -85),
+            () => OnProfileConfirm(), 220);
+        confirmBtn.GetComponent<Image>().color = new Color(0.2f, 0.5f, 0.25f);
+
+        profilePanel.SetActive(false);
+    }
+
+    private void ShowProfilePanel()
+    {
+        profileNameInput.text = PlayerPrefs.GetString("PlayerName", "");
+        profilePanel.SetActive(true);
+        profileNameInput.ActivateInputField();
+    }
+
+    private void OnProfileConfirm()
+    {
+        string name = profileNameInput.text.Trim();
+        if (name.Length < 1)
+        {
+            profileNameInput.text = "";
+            return;
+        }
+        if (name.Length > 20) name = name.Substring(0, 20);
+        PlayerPrefs.SetString("PlayerName", name);
+        PlayerPrefs.Save();
+        GameLogger.Instance?.RegisterPlayer(name);
+        profilePanel.SetActive(false);
+        ShowMainMenu();
+    }
+
+    // ─── Admin Password Panel ───
+
+    private void CreateAdminPasswordPanel(GameObject parent)
+    {
+        adminPasswordPanel = new GameObject("AdminPasswordPanel");
+        adminPasswordPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = adminPasswordPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.06f, 0.06f, 0.1f, 0.97f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+        panelRect.sizeDelta = new Vector2(480, 280);
+
+        // Title
+        GameObject titleObj = new GameObject("AdminTitle");
+        titleObj.transform.SetParent(adminPasswordPanel.transform, false);
+        var titleText = titleObj.AddComponent<TextMeshProUGUI>();
+        titleText.text = "Admin Access";
+        titleText.fontSize = 30;
+        titleText.alignment = TextAlignmentOptions.Center;
+        titleText.color = new Color(0.9f, 0.7f, 0.2f);
+        titleText.fontStyle = FontStyles.Bold;
+        var titleRect = titleText.rectTransform;
+        titleRect.anchorMin = new Vector2(0.5f, 0.5f);
+        titleRect.anchorMax = new Vector2(0.5f, 0.5f);
+        titleRect.sizeDelta = new Vector2(420, 44);
+        titleRect.anchoredPosition = new Vector2(0, 90);
+
+        // Password input
+        GameObject inputObj = new GameObject("PasswordInput");
+        inputObj.transform.SetParent(adminPasswordPanel.transform, false);
+        var inputImg = inputObj.AddComponent<Image>();
+        inputImg.color = new Color(0.15f, 0.15f, 0.2f);
+        var inputRect = inputImg.rectTransform;
+        inputRect.anchorMin = new Vector2(0.5f, 0.5f);
+        inputRect.anchorMax = new Vector2(0.5f, 0.5f);
+        inputRect.sizeDelta = new Vector2(340, 50);
+        inputRect.anchoredPosition = new Vector2(0, 20);
+
+        GameObject taObj = new GameObject("Text Area");
+        taObj.transform.SetParent(inputObj.transform, false);
+        var taRect = taObj.AddComponent<RectTransform>();
+        taRect.anchorMin = Vector2.zero;
+        taRect.anchorMax = Vector2.one;
+        taRect.offsetMin = new Vector2(10, 5);
+        taRect.offsetMax = new Vector2(-10, -5);
+
+        GameObject pwTextObj = new GameObject("Text");
+        pwTextObj.transform.SetParent(taObj.transform, false);
+        var pwText = pwTextObj.AddComponent<TextMeshProUGUI>();
+        pwText.fontSize = 28;
+        pwText.alignment = TextAlignmentOptions.Center;
+        pwText.color = Color.white;
+        var pwTextRect = pwText.rectTransform;
+        pwTextRect.anchorMin = Vector2.zero;
+        pwTextRect.anchorMax = Vector2.one;
+        pwTextRect.offsetMin = Vector2.zero;
+        pwTextRect.offsetMax = Vector2.zero;
+
+        GameObject pwPhObj = new GameObject("Placeholder");
+        pwPhObj.transform.SetParent(taObj.transform, false);
+        var pwPh = pwPhObj.AddComponent<TextMeshProUGUI>();
+        pwPh.text = "Password";
+        pwPh.fontSize = 24;
+        pwPh.alignment = TextAlignmentOptions.Center;
+        pwPh.color = new Color(0.4f, 0.4f, 0.4f, 0.7f);
+        pwPh.fontStyle = FontStyles.Italic;
+        var pwPhRect = pwPh.rectTransform;
+        pwPhRect.anchorMin = Vector2.zero;
+        pwPhRect.anchorMax = Vector2.one;
+        pwPhRect.offsetMin = Vector2.zero;
+        pwPhRect.offsetMax = Vector2.zero;
+
+        adminPasswordInput = inputObj.AddComponent<TMP_InputField>();
+        adminPasswordInput.textComponent = pwText;
+        adminPasswordInput.placeholder = pwPh;
+        adminPasswordInput.contentType = TMP_InputField.ContentType.Password;
+        adminPasswordInput.textViewport = taRect;
+        adminPasswordInput.onSubmit.AddListener((_) => OnAdminPasswordSubmit());
+
+        // Error text
+        GameObject errObj = new GameObject("AdminPwError");
+        errObj.transform.SetParent(adminPasswordPanel.transform, false);
+        adminPasswordError = errObj.AddComponent<TextMeshProUGUI>();
+        adminPasswordError.fontSize = 20;
+        adminPasswordError.alignment = TextAlignmentOptions.Center;
+        adminPasswordError.color = new Color(1f, 0.35f, 0.35f);
+        var errRect = adminPasswordError.rectTransform;
+        errRect.anchorMin = new Vector2(0.5f, 0.5f);
+        errRect.anchorMax = new Vector2(0.5f, 0.5f);
+        errRect.sizeDelta = new Vector2(380, 28);
+        errRect.anchoredPosition = new Vector2(0, -20);
+
+        // Buttons
+        var enterBtn = CreateButton(adminPasswordPanel, "AdminEnterBtn", "Enter", new Vector2(-70, -75),
+            () => OnAdminPasswordSubmit(), 130);
+        enterBtn.GetComponent<Image>().color = new Color(0.3f, 0.5f, 0.8f);
+
+        CreateButton(adminPasswordPanel, "AdminCancelBtn", "Cancel", new Vector2(70, -75),
+            () => adminPasswordPanel.SetActive(false), 130);
+
+        adminPasswordPanel.SetActive(false);
+    }
+
+    private void ShowAdminPasswordPanel()
+    {
+        adminPasswordInput.text = "";
+        adminPasswordError.text = "";
+        adminPasswordPanel.SetActive(true);
+        adminPasswordInput.ActivateInputField();
+    }
+
+    private void OnAdminPasswordSubmit()
+    {
+        if (adminPasswordInput.text == AdminPassword)
+        {
+            adminPasswordPanel.SetActive(false);
+            ShowAdminGameList();
+        }
+        else
+        {
+            adminPasswordError.text = "Incorrect password";
+            adminPasswordInput.text = "";
+        }
+    }
+
+    // ─── Admin Game List Panel ───
+
+    private void CreateAdminGameListPanel(GameObject parent)
+    {
+        adminGameListPanel = new GameObject("AdminGameListPanel");
+        adminGameListPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = adminGameListPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.07f, 0.07f, 0.1f, 0.97f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        // Header
+        GameObject headerObj = new GameObject("AdminHeader");
+        headerObj.transform.SetParent(adminGameListPanel.transform, false);
+        var headerText = headerObj.AddComponent<TextMeshProUGUI>();
+        headerText.text = "Recent Games";
+        headerText.fontSize = 36;
+        headerText.alignment = TextAlignmentOptions.Center;
+        headerText.color = new Color(0.9f, 0.7f, 0.2f);
+        headerText.fontStyle = FontStyles.Bold;
+        var headerRect = headerText.rectTransform;
+        headerRect.anchorMin = new Vector2(0.5f, 1f);
+        headerRect.anchorMax = new Vector2(0.5f, 1f);
+        headerRect.pivot = new Vector2(0.5f, 1f);
+        headerRect.anchoredPosition = new Vector2(0, -20);
+        headerRect.sizeDelta = new Vector2(700, 50);
+
+        // Loading text (shown while fetching)
+        GameObject loadObj = new GameObject("LoadingText");
+        loadObj.transform.SetParent(adminGameListPanel.transform, false);
+        var loadText = loadObj.AddComponent<TextMeshProUGUI>();
+        loadText.text = "Loading...";
+        loadText.fontSize = 24;
+        loadText.alignment = TextAlignmentOptions.Center;
+        loadText.color = new Color(0.6f, 0.6f, 0.6f);
+        var loadRect = loadText.rectTransform;
+        loadRect.anchorMin = new Vector2(0.5f, 0.5f);
+        loadRect.anchorMax = new Vector2(0.5f, 0.5f);
+        loadRect.sizeDelta = new Vector2(400, 40);
+        loadRect.anchoredPosition = Vector2.zero;
+
+        // ScrollRect
+        GameObject scrollObj = new GameObject("GameScrollView");
+        scrollObj.transform.SetParent(adminGameListPanel.transform, false);
+        var scrollImg = scrollObj.AddComponent<Image>();
+        scrollImg.color = new Color(0.05f, 0.05f, 0.08f);
+        var scrollRect = scrollObj.AddComponent<ScrollRect>();
+        var scrollRt = scrollObj.GetComponent<RectTransform>();
+        scrollRt.anchorMin = new Vector2(0.1f, 0.1f);
+        scrollRt.anchorMax = new Vector2(0.9f, 0.88f);
+        scrollRt.offsetMin = Vector2.zero;
+        scrollRt.offsetMax = Vector2.zero;
+
+        // Viewport
+        GameObject vpObj = new GameObject("Viewport");
+        vpObj.transform.SetParent(scrollObj.transform, false);
+        vpObj.AddComponent<Image>().color = Color.clear;
+        vpObj.AddComponent<Mask>().showMaskGraphic = false;
+        var vpRect = vpObj.GetComponent<RectTransform>();
+        vpRect.anchorMin = Vector2.zero;
+        vpRect.anchorMax = Vector2.one;
+        vpRect.offsetMin = Vector2.zero;
+        vpRect.offsetMax = Vector2.zero;
+
+        // Content
+        adminGameListContent = new GameObject("Content");
+        adminGameListContent.transform.SetParent(vpObj.transform, false);
+        var contentRt = adminGameListContent.AddComponent<RectTransform>();
+        contentRt.anchorMin = new Vector2(0, 1);
+        contentRt.anchorMax = new Vector2(1, 1);
+        contentRt.pivot = new Vector2(0.5f, 1f);
+        contentRt.anchoredPosition = Vector2.zero;
+        contentRt.sizeDelta = new Vector2(0, 0);
+        var vlg = adminGameListContent.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = 6;
+        vlg.padding = new RectOffset(10, 10, 10, 10);
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = false;
+        var csf = adminGameListContent.AddComponent<ContentSizeFitter>();
+        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        scrollRect.content = contentRt;
+        scrollRect.viewport = vpRect;
+        scrollRect.vertical = true;
+        scrollRect.horizontal = false;
+        scrollRect.scrollSensitivity = 25;
+
+        // Close button
+        CreateButton(adminGameListPanel, "AdminCloseBtn", "Close", new Vector2(0, 30),
+            () => adminGameListPanel.SetActive(false), 180);
+
+        adminGameListPanel.SetActive(false);
+    }
+
+    private void ShowAdminGameList()
+    {
+        adminGameListPanel.SetActive(true);
+        // Clear existing items
+        foreach (Transform child in adminGameListContent.transform)
+            Destroy(child.gameObject);
+
+        GameLogger.Instance?.FetchRecentGames((games) =>
+        {
+            if (!adminGameListPanel.activeSelf) return;
+            foreach (Transform child in adminGameListContent.transform)
+                Destroy(child.gameObject);
+
+            if (games.Count == 0)
+            {
+                var noGamesObj = new GameObject("NoGames");
+                noGamesObj.transform.SetParent(adminGameListContent.transform, false);
+                var noGamesText = noGamesObj.AddComponent<TextMeshProUGUI>();
+                noGamesText.text = "No games recorded yet.";
+                noGamesText.fontSize = 22;
+                noGamesText.alignment = TextAlignmentOptions.Center;
+                noGamesText.color = new Color(0.6f, 0.6f, 0.6f);
+                var noGamesRt = noGamesText.rectTransform;
+                noGamesRt.sizeDelta = new Vector2(0, 40);
+                return;
+            }
+
+            foreach (var game in games)
+            {
+                string gameId    = game.gameId;
+                string timeAgo   = FormatTimeAgo(game.startedAt);
+                string modeShort = game.mode == "SeedChess" ? "Seed" :
+                                   game.mode == "BluffyChess" ? "Bluffy" : "Classic";
+                string resultStr = game.result == "ongoing" ? "Ongoing" :
+                                   game.result.Replace("_wins", " Wins").Replace("white", "White").Replace("black", "Black");
+                string player    = string.IsNullOrEmpty(game.playerName) ? "?" : game.playerName;
+
+                // Row container
+                GameObject rowObj = new GameObject($"Row_{gameId}");
+                rowObj.transform.SetParent(adminGameListContent.transform, false);
+                var rowImg = rowObj.AddComponent<Image>();
+                rowImg.color = new Color(0.12f, 0.12f, 0.17f);
+                var rowRt = rowImg.rectTransform;
+                rowRt.sizeDelta = new Vector2(0, 52);
+                var rowLayout = rowObj.AddComponent<HorizontalLayoutGroup>();
+                rowLayout.padding = new RectOffset(12, 12, 0, 0);
+                rowLayout.spacing = 10;
+                rowLayout.childAlignment = TextAnchor.MiddleLeft;
+                rowLayout.childForceExpandWidth = false;
+                rowLayout.childForceExpandHeight = true;
+                rowLayout.childControlHeight = true;
+
+                // Info text
+                GameObject infoObj = new GameObject("RowInfo");
+                infoObj.transform.SetParent(rowObj.transform, false);
+                var infoText = infoObj.AddComponent<TextMeshProUGUI>();
+                infoText.text = $"<b>{modeShort}</b>  {resultStr}  <color=#999>{timeAgo}</color>  <color=#8cf>{player}</color>";
+                infoText.fontSize = 19;
+                infoText.alignment = TextAlignmentOptions.MidpointLeft;
+                infoText.color = Color.white;
+                var infoRt = infoText.rectTransform;
+                infoRt.sizeDelta = new Vector2(600, 0);
+                var infoLE = infoObj.AddComponent<LayoutElement>();
+                infoLE.flexibleWidth = 1;
+                infoLE.minHeight = 40;
+
+                // Watch button
+                GameObject watchBtnObj = new GameObject("WatchBtn");
+                watchBtnObj.transform.SetParent(rowObj.transform, false);
+                var watchImg = watchBtnObj.AddComponent<Image>();
+                watchImg.color = new Color(0.25f, 0.45f, 0.7f);
+                var watchBtn = watchBtnObj.AddComponent<Button>();
+                watchBtn.targetGraphic = watchImg;
+                var watchColors = watchBtn.colors;
+                watchColors.highlightedColor = new Color(0.35f, 0.55f, 0.85f);
+                watchColors.pressedColor = new Color(0.15f, 0.3f, 0.5f);
+                watchBtn.colors = watchColors;
+                var watchLE = watchBtnObj.AddComponent<LayoutElement>();
+                watchLE.preferredWidth = 100;
+                watchLE.minHeight = 36;
+                watchBtn.onClick.AddListener(() => OnWatchGameClicked(gameId, game.mode));
+                GameObject watchTextObj = new GameObject("WatchText");
+                watchTextObj.transform.SetParent(watchBtnObj.transform, false);
+                var watchText = watchTextObj.AddComponent<TextMeshProUGUI>();
+                watchText.text = "Watch";
+                watchText.fontSize = 18;
+                watchText.alignment = TextAlignmentOptions.Center;
+                watchText.color = Color.white;
+                var watchTextRt = watchText.rectTransform;
+                watchTextRt.anchorMin = Vector2.zero;
+                watchTextRt.anchorMax = Vector2.one;
+                watchTextRt.offsetMin = Vector2.zero;
+                watchTextRt.offsetMax = Vector2.zero;
+            }
+        });
+    }
+
+    private void OnWatchGameClicked(string gameId, string mode)
+    {
+        adminGameListPanel.SetActive(false);
+        GameLogger.Instance?.FetchGameReplay(gameId, (fetchedMode, actions) =>
+        {
+            if (actions.Count == 0)
+            {
+                ShowInfoPanel("No actions recorded for this game.");
+                adminGameListPanel.SetActive(true);
+                return;
+            }
+            string replayMode = string.IsNullOrEmpty(fetchedMode) ? mode : fetchedMode;
+            GameManager.Instance.StartReplay(actions, replayMode);
+        });
+    }
+
+    private static string FormatTimeAgo(long unixMs)
+    {
+        long nowMs  = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        long deltaS = (nowMs - unixMs) / 1000;
+        if (deltaS < 60)  return $"{deltaS}s ago";
+        if (deltaS < 3600) return $"{deltaS / 60}m ago";
+        if (deltaS < 86400) return $"{deltaS / 3600}h ago";
+        return $"{deltaS / 86400}d ago";
+    }
+
+    // ─── Replay Controls ───
+
+    private void CreateReplayControlsPanel(GameObject parent)
+    {
+        replayControlsPanel = new GameObject("ReplayControlsPanel");
+        replayControlsPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = replayControlsPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.08f, 0.08f, 0.12f, 0.92f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = new Vector2(0.5f, 0f);
+        panelRect.anchorMax = new Vector2(0.5f, 0f);
+        panelRect.pivot = new Vector2(0.5f, 0f);
+        panelRect.anchoredPosition = new Vector2(0, 10);
+        panelRect.sizeDelta = new Vector2(680, 60);
+
+        // Progress text
+        GameObject progObj = new GameObject("ReplayProgress");
+        progObj.transform.SetParent(replayControlsPanel.transform, false);
+        replayProgressText = progObj.AddComponent<TextMeshProUGUI>();
+        replayProgressText.text = "Move 0 / 0";
+        replayProgressText.fontSize = 20;
+        replayProgressText.alignment = TextAlignmentOptions.Center;
+        replayProgressText.color = new Color(0.85f, 0.85f, 0.85f);
+        var progRect = replayProgressText.rectTransform;
+        progRect.anchorMin = new Vector2(0.5f, 0.5f);
+        progRect.anchorMax = new Vector2(0.5f, 0.5f);
+        progRect.sizeDelta = new Vector2(120, 40);
+        progRect.anchoredPosition = new Vector2(-230, 0);
+
+        // Back button
+        var backBtn = CreateButton(replayControlsPanel, "ReplayBackBtn", "◀ Back",
+            new Vector2(-130, 0), () => GameManager.Instance.ReplayStepBackward(), 110);
+        backBtn.GetComponent<Image>().color = new Color(0.3f, 0.3f, 0.45f);
+
+        // Next button
+        var nextBtn = CreateButton(replayControlsPanel, "ReplayNextBtn", "Next ▶",
+            new Vector2(-10, 0), () => GameManager.Instance.ReplayStepForward(), 110);
+        nextBtn.GetComponent<Image>().color = new Color(0.25f, 0.45f, 0.3f);
+
+        // Auto button
+        var autoBtn = CreateButton(replayControlsPanel, "ReplayAutoBtn", "⏭ Auto",
+            new Vector2(110, 0), () => ToggleReplayAuto(), 110);
+        autoBtn.GetComponent<Image>().color = new Color(0.4f, 0.35f, 0.1f);
+
+        // Stop button
+        var stopBtn = CreateButton(replayControlsPanel, "ReplayStopBtn", "✕ Stop",
+            new Vector2(240, 0), () => GameManager.Instance.StopReplay(), 100);
+        stopBtn.GetComponent<Image>().color = new Color(0.55f, 0.15f, 0.15f);
+
+        replayControlsPanel.SetActive(false);
+    }
+
+    public void ShowReplayControls(int index, int total)
+    {
+        replayProgressText.text = $"Move {index} / {total}";
+        replayControlsPanel.SetActive(true);
+    }
+
+    public void HideReplayControls()
+    {
+        if (replayAutoCoroutine != null)
+        {
+            StopCoroutine(replayAutoCoroutine);
+            replayAutoCoroutine = null;
+        }
+        replayControlsPanel.SetActive(false);
+    }
+
+    public void UpdateReplayProgress(int index, int total)
+    {
+        replayProgressText.text = $"Move {index} / {total}";
+    }
+
+    private void ToggleReplayAuto()
+    {
+        if (replayAutoCoroutine != null)
+        {
+            StopCoroutine(replayAutoCoroutine);
+            replayAutoCoroutine = null;
+            var autoBtn = replayControlsPanel.transform.Find("ReplayAutoBtn");
+            if (autoBtn != null) autoBtn.GetComponent<Image>().color = new Color(0.4f, 0.35f, 0.1f);
+        }
+        else
+        {
+            replayAutoCoroutine = StartCoroutine(AutoPlayCoroutine());
+        }
+    }
+
+    private System.Collections.IEnumerator AutoPlayCoroutine()
+    {
+        var autoBtn = replayControlsPanel.transform.Find("ReplayAutoBtn");
+        if (autoBtn != null) autoBtn.GetComponent<Image>().color = new Color(0.6f, 0.55f, 0.15f);
+
+        while (true)
+        {
+            yield return new WaitForSeconds(0.8f);
+            string prevText = replayProgressText.text;
+            GameManager.Instance.ReplayStepForward();
+            // If text didn't advance, we're at the end
+            if (replayProgressText.text == prevText)
+                break;
+        }
+
+        replayAutoCoroutine = null;
+        if (autoBtn != null) autoBtn.GetComponent<Image>().color = new Color(0.4f, 0.35f, 0.1f);
     }
 }

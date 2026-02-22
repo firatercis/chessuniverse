@@ -52,6 +52,11 @@ public static class GameBootstrap
         netObj.AddComponent<NetworkManager>();
         Object.DontDestroyOnLoad(netObj);
 
+        // Create Game Logger
+        GameObject loggerObj = new GameObject("GameLogger");
+        loggerObj.AddComponent<GameLogger>();
+        Object.DontDestroyOnLoad(loggerObj);
+
         // Create Game Manager
         GameObject gmObj = new GameObject("GameManager");
         gmObj.AddComponent<GameManager>();

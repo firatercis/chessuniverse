@@ -73,6 +73,26 @@ public class ChessPiece : MonoBehaviour
         }
     }
 
+    public void UpdateType(PieceType newType)
+    {
+        type = newType;
+        if (spriteRenderer == null)
+            spriteRenderer = GetComponent<SpriteRenderer>();
+        if (!PieceNames.ContainsKey(newType)) return;
+
+        string colorPrefix = color == PieceColor.White ? "w" : "b";
+        string spritePath = $"ChessPieces/{colorPrefix}_{PieceNames[newType]}";
+        Sprite sprite = Resources.Load<Sprite>(spritePath);
+        if (sprite != null)
+        {
+            spriteRenderer.sprite = sprite;
+            float spriteWorldSize = sprite.rect.height / sprite.pixelsPerUnit;
+            float targetSize = 0.85f;
+            float scale = targetSize / spriteWorldSize;
+            transform.localScale = new Vector3(scale, scale, 1f);
+        }
+    }
+
     public void SetPosition(int newX, int newY)
     {
         x = newX;

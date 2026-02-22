@@ -243,6 +243,9 @@ public class ChessBoard : MonoBehaviour
                     p.transform.position = VisualPos(x, y);
             }
         }
+
+        if (SeedManager.Instance != null)
+            SeedManager.Instance.RefreshSeedVisualPositions();
     }
 
     private Sprite GetHighlightSprite()

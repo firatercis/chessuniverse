@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>{{{ PRODUCT_NAME }}}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #1a1a2e;
+      overflow: hidden;
+      position: fixed;
+      touch-action: none;
+    }
+
+    #unity-container {
+      position: fixed;
+      top:    env(safe-area-inset-top,    0px);
+      left:   env(safe-area-inset-left,   0px);
+      right:  env(safe-area-inset-right,  0px);
+      bottom: env(safe-area-inset-bottom, 0px);
+      background: #1a1a2e;
+    }
+
+    #unity-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: opacity 0.4s ease;
+    }
+
+    #loading-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .loading-title {
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 28px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      margin-bottom: 32px;
+    }
+
+    .progress-bar-bg {
+      width: 220px;
+      height: 6px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3d9cf7, #66d9e8);
+      border-radius: 3px;
+      transition: width 0.2s ease;
+    }
+  </style>
+</head>
+<body>
+  <div id="unity-container">
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+  </div>
+
+  <div id="loading-overlay">
+    <div class="loading-title">Chess Universe</div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progress-fill"></div>
+    </div>
+  </div>
+
+  <script>
+    var canvas       = document.getElementById("unity-canvas");
+    var overlay      = document.getElementById("loading-overlay");
+    var progressFill = document.getElementById("progress-fill");
+
+    // Fix iOS Safari dynamic viewport height
+    function setVh() {
+      var container = document.getElementById("unity-container");
+      if (container) container.style.height = window.innerHeight + "px";
+    }
+    setVh();
+    window.addEventListener("resize", setVh);
+    window.addEventListener("orientationchange", function() { setTimeout(setVh, 200); });
+
+    // Block scroll / zoom / context menu
+    document.addEventListener("touchmove",   function(e) { e.preventDefault(); }, { passive: false });
+    document.addEventListener("contextmenu", function(e) { e.preventDefault(); });
+    document.addEventListener("touchstart",  function(e) { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+
+    var config = {
+      dataUrl:            "{{{ DATA_URL }}}",
+      frameworkUrl:       "{{{ FRAMEWORK_URL }}}",
+      codeUrl:            "{{{ CODE_URL }}}",
+      streamingAssetsUrl: "StreamingAssets",
+      companyName:        "{{{ COMPANY_NAME }}}",
+      productName:        "{{{ PRODUCT_NAME }}}",
+      productVersion:     "{{{ PRODUCT_VERSION }}}",
+    };
+
+    var script = document.createElement("script");
+    script.src = "{{{ LOADER_URL }}}";
+    script.onload = function() {
+      createUnityInstance(canvas, config, function(progress) {
+        progressFill.style.width = (progress * 100) + "%";
+      }).then(function(instance) {
+        setTimeout(function() {
+          overlay.classList.add("hidden");
+          setTimeout(function() { overlay.style.display = "none"; }, 400);
+        }, 200);
+      }).catch(function(msg) { alert(msg); });
+    };
+    document.body.appendChild(script);
+  </script>
+</body>
+</html>

@@ -161,7 +161,7 @@ public class SeedManager : MonoBehaviour
     {
         // Root container (unscaled, used to group sprite + text)
         var obj = new GameObject($"Seed_{color}_{targetType}");
-        obj.transform.position = new Vector3(x, y, 0);
+        obj.transform.position = ChessBoard.Instance.VisualPos(x, y);
 
         // Sprite child, scaled down and semi-transparent
         var spriteObj = new GameObject("Sprite");
@@ -204,6 +204,15 @@ public class SeedManager : MonoBehaviour
         tmp.rectTransform.sizeDelta = new Vector2(0.6f, 0.6f);
 
         return obj;
+    }
+
+    public void RefreshSeedVisualPositions()
+    {
+        foreach (var seed in seeds)
+        {
+            if (seed.visualObj != null)
+                seed.visualObj.transform.position = ChessBoard.Instance.VisualPos(seed.x, seed.y);
+        }
     }
 
     private void UpdateSeedVisual(SeedData seed)

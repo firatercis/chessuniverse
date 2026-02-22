@@ -37,6 +37,11 @@ public class GameManager : MonoBehaviour
 
     private Camera mainCam;
 
+    // Replay mode
+    private bool isReplayMode;
+    private List<ReplayAction> replayActions;
+    private int replayIndex;
+
     private void Awake()
     {
         Instance = this;
@@ -78,6 +83,8 @@ public class GameManager : MonoBehaviour
 
         ChessBoard.Instance.SetupPieces();
 
+        GameLogger.Instance?.StartGame(mode, playMode);
+
         if (!isBluffyMode)
             UIManager.Instance.UpdateTurnText(currentTurn);
         // Bluffy mode: SetupPieces calls BluffyManager.StartSetupPhase which handles UI
@@ -86,13 +93,24 @@ public class GameManager : MonoBehaviour
     private void SetupCamera()
     {
         mainCam.orthographic = true;
-        mainCam.orthographicSize = 5.5f;
         mainCam.transform.position = new Vector3(3.5f, 3.5f, -10);
+        mainCam.clearFlags = CameraClearFlags.SolidColor;
         mainCam.backgroundColor = new Color(0.18f, 0.18f, 0.22f);
+        UpdateCameraSize();
+    }
+
+    public void UpdateCameraSize()
+    {
+        if (mainCam == null) return;
+        float aspect = mainCam.aspect; // width / height
+        // Portrait: board must fit horizontally → orthographicSize = halfBoardWidth / aspect
+        // Landscape: fixed size that fits the board comfortably
+        mainCam.orthographicSize = aspect < 1f ? Mathf.Max(5.5f, 4.4f / aspect) : 5.5f;
     }
 
     private void Update()
     {
+        if (isReplayMode) return;
         if (showingMenu) return;
         if (waitingForPromotion) return;
         if (gameState == GameState.Checkmate || gameState == GameState.Stalemate) return;
@@ -180,6 +198,7 @@ public class GameManager : MonoBehaviour
                 SeedManager.Instance.PlantSeed(pos.x, pos.y, currentTurn, pendingSeedType);
                 if (isOnline)
                     NetworkManager.Instance.PushAction(NetworkAction.SeedPlant(pos.x, pos.y, pendingSeedType.ToString()));
+                GameLogger.Instance?.LogSeedPlant(pos.x, pos.y, pendingSeedType);
                 DeselectPiece();
                 EndTurn();
                 return;
@@ -344,6 +363,7 @@ public class GameManager : MonoBehaviour
         if (isOnline)
             NetworkManager.Instance.PushAction(NetworkAction.Move(moveFrom.x, moveFrom.y, target.x, target.y));
 
+        GameLogger.Instance?.LogMove(moveFrom.x, moveFrom.y, target.x, target.y, piece.type);
         DeselectPiece();
         EndTurn();
     }
@@ -427,6 +447,7 @@ public class GameManager : MonoBehaviour
         if (isOnline && !applyingRemoteAction)
             NetworkManager.Instance.PushAction(NetworkAction.BluffCall());
 
+        GameLogger.Instance?.LogBluffCall();
         UIManager.Instance.HideBluffPanel();
 
         // Show dramatic "BLUFF!!" splash, then reveal piece and resolve
@@ -462,6 +483,7 @@ public class GameManager : MonoBehaviour
         if (isOnline && !applyingRemoteAction)
             NetworkManager.Instance.PushAction(NetworkAction.BluffAccept());
 
+        GameLogger.Instance?.LogBluffAccept();
         BluffyManager.Instance.OnMoveAccepted();
     }
 
@@ -481,6 +503,7 @@ public class GameManager : MonoBehaviour
             NetworkManager.Instance.PushAction(
                 NetworkAction.Move(promotionMoveFrom.x, promotionMoveFrom.y, x, y, type.ToString()));
 
+        GameLogger.Instance?.LogMove(promotionMoveFrom.x, promotionMoveFrom.y, x, y, PieceType.Pawn, type);
         promotingPawn = null;
         waitingForPromotion = false;
         UIManager.Instance.HidePromotionPanel();
@@ -490,6 +513,8 @@ public class GameManager : MonoBehaviour
 
     public void ApplyAIMove(ChessPiece piece, Vector2Int target, PieceType? promotionType)
     {
+        int logFromX = piece.x, logFromY = piece.y;
+        PieceType logPieceType = piece.type;
         ChessAI.Instance.RecordMove(new Vector2Int(piece.x, piece.y), target);
 
         bool isPawnDoubleMove = false;
@@ -537,6 +562,7 @@ public class GameManager : MonoBehaviour
             ChessBoard.Instance.CreatePiece(promotionType.Value, pcolor, px, py);
         }
 
+        GameLogger.Instance?.LogMove(logFromX, logFromY, target.x, target.y, logPieceType, promotionType);
         waitingForAI = false;
         DeselectPiece();
         EndTurn();
@@ -545,6 +571,7 @@ public class GameManager : MonoBehaviour
     public void ApplyAIPlanting(Vector2Int square, PieceType seedType)
     {
         SeedManager.Instance.PlantSeed(square.x, square.y, PieceColor.Black, seedType);
+        GameLogger.Instance?.LogSeedPlant(square.x, square.y, seedType);
         waitingForAI = false;
         DeselectPiece();
         EndTurn();
@@ -648,11 +675,13 @@ public class GameManager : MonoBehaviour
         {
             gameState = GameState.Checkmate;
             PieceColor winner = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
+            GameLogger.Instance?.EndGame($"{winner.ToString().ToLower()}_wins");
             UIManager.Instance.ShowGameOver(winner);
         }
         else if (!inCheck && !hasLegalMove)
         {
             gameState = GameState.Stalemate;
+            GameLogger.Instance?.EndGame("stalemate");
             UIManager.Instance.ShowStalemate();
         }
         else if (inCheck)
@@ -682,6 +711,157 @@ public class GameManager : MonoBehaviour
                 }
             }
         }
+    }
+
+    // ─── Replay Mode ───
+
+    public void StartReplay(List<ReplayAction> actions, string modeStr)
+    {
+        isReplayMode  = true;
+        replayActions = actions;
+        replayIndex   = 0;
+
+        GameMode mode = GameMode.Classic;
+        System.Enum.TryParse(modeStr, out mode);
+
+        GameBootstrap.CurrentMode = mode;
+        currentPlayMode  = PlayMode.Local;
+        showingMenu      = false;
+        currentTurn      = PieceColor.White;
+        gameState        = GameState.Playing;
+        selectedPiece    = null;
+        enPassantTarget  = null;
+        waitingForPromotion = false;
+        promotingPawn    = null;
+        isPlantingMode   = false;
+        waitingForAI     = false;
+
+        UIManager.Instance.HideMainMenu();
+        ChessAI.Instance.ResetHistory();
+        SeedManager.Instance.ClearAll();
+        ChessBoard.Instance.SetFlipped(false);
+        ChessBoard.Instance.ClearAllPieces();
+
+        // Initial board: always Classic piece layout
+        var savedMode = GameBootstrap.CurrentMode;
+        GameBootstrap.CurrentMode = GameMode.Classic;
+        ChessBoard.Instance.SetupPieces();
+        GameBootstrap.CurrentMode = savedMode;
+
+        UIManager.Instance.ShowReplayControls(replayIndex, replayActions.Count);
+    }
+
+    public void ReplayStepForward()
+    {
+        if (replayActions == null || replayIndex >= replayActions.Count) return;
+        ApplyReplayAction(replayActions[replayIndex]);
+        replayIndex++;
+        UIManager.Instance.UpdateReplayProgress(replayIndex, replayActions.Count);
+    }
+
+    public void ReplayStepBackward()
+    {
+        if (replayIndex <= 0) return;
+        replayIndex--;
+        ResetBoardForReplay();
+        for (int i = 0; i < replayIndex; i++)
+            ApplyReplayAction(replayActions[i]);
+        UIManager.Instance.UpdateReplayProgress(replayIndex, replayActions.Count);
+    }
+
+    public void StopReplay()
+    {
+        isReplayMode  = false;
+        replayActions = null;
+        replayIndex   = 0;
+        UIManager.Instance.HideReplayControls();
+        RestartGame();
+    }
+
+    private void ResetBoardForReplay()
+    {
+        currentTurn    = PieceColor.White;
+        enPassantTarget = null;
+        SeedManager.Instance.ClearAll();
+        ChessBoard.Instance.ClearAllPieces();
+        var savedMode = GameBootstrap.CurrentMode;
+        GameBootstrap.CurrentMode = GameMode.Classic;
+        ChessBoard.Instance.SetupPieces();
+        GameBootstrap.CurrentMode = savedMode;
+    }
+
+    private void ApplyReplayAction(ReplayAction action)
+    {
+        switch (action.type)
+        {
+            case "move":
+                ApplyReplayMove(action);
+                break;
+            case "seedPlant":
+                if (System.Enum.TryParse(action.seedType, out PieceType seedT))
+                    SeedManager.Instance.PlantSeed(action.fx, action.fy, currentTurn, seedT);
+                currentTurn = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
+                break;
+            case "sacrifice":
+                ChessBoard.Instance.RemovePiece(action.fx, action.fy);
+                break;
+            case "rearrangeSwap":
+            {
+                ChessPiece rp1 = ChessBoard.Instance.board[action.x1, action.y1];
+                ChessPiece rp2 = ChessBoard.Instance.board[action.x2, action.y2];
+                if (rp1 != null && rp2 != null)
+                    BluffyManager.Instance.SwapPiecePositions(rp1, rp2);
+                break;
+            }
+            case "bluffySetup":
+            {
+                PieceColor setupCol = action.color == "White" ? PieceColor.White : PieceColor.Black;
+                int        backY    = setupCol == PieceColor.White ? 0 : 7;
+                string[]   types   = action.positions.Split(',');
+                var        board   = ChessBoard.Instance.board;
+                for (int x = 0; x < 8 && x < types.Length; x++)
+                {
+                    ChessPiece p = board[x, backY];
+                    if (p == null || p.type == PieceType.Pawn) continue;
+                    if (System.Enum.TryParse(types[x], out PieceType pt))
+                    {
+                        BluffyManager.Instance.realTypes[p] = pt;
+                        p.UpdateType(pt);
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    private void ApplyReplayMove(ReplayAction action)
+    {
+        ChessPiece piece = ChessBoard.Instance.board[action.fx, action.fy];
+        if (piece == null) return;
+
+        // Handle castling (king moves 2 squares horizontally)
+        if (piece.type == PieceType.King && Mathf.Abs(action.tx - action.fx) == 2)
+        {
+            bool       kingside  = action.tx > action.fx;
+            int        rookFromX = kingside ? 7 : 0;
+            int        rookToX   = kingside ? action.tx - 1 : action.tx + 1;
+            ChessPiece rook      = ChessBoard.Instance.board[rookFromX, action.fy];
+            if (rook != null)
+                ChessBoard.Instance.MovePiece(rook, rookToX, action.fy);
+        }
+
+        ChessBoard.Instance.MovePiece(piece, action.tx, action.ty);
+
+        // Handle promotion
+        if (!string.IsNullOrEmpty(action.promotion) && action.promotion != "null"
+            && System.Enum.TryParse(action.promotion, out PieceType promoType))
+        {
+            PieceColor pcolor = piece.color;
+            ChessBoard.Instance.RemovePiece(action.tx, action.ty);
+            ChessBoard.Instance.CreatePiece(promoType, pcolor, action.tx, action.ty);
+        }
+
+        currentTurn = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
     }
 
     public void RestartGame()

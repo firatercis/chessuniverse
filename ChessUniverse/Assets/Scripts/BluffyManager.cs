@@ -106,7 +106,7 @@ public class BluffyManager : MonoBehaviour
         if (currentPhase == BluffyPhase.GameOver) return;
 
         // Debug peek: hold key to see real pieces behind masks (desktop only)
-#if !UNITY_IOS && !UNITY_ANDROID
+#if !UNITY_IOS && !UNITY_ANDROID && !UNITY_WEBGL
         if (Input.GetKeyDown(settings.peekKey) && !isPeeking)
         {
             isPeeking = true;
@@ -230,6 +230,7 @@ public class BluffyManager : MonoBehaviour
             // Online: serialize my back rank positions and send
             UIManager.Instance.HideSetupPanel();
             string positionsJson = SerializeMyBackRank();
+            GameLogger.Instance?.LogBluffySetup(NetworkManager.Instance.MyColor, positionsJson);
             NetworkManager.Instance.SendMySetup(positionsJson);
             // Show waiting message until opponent setup arrives
             UIManager.Instance.ShowInfoPanel("Waiting for opponent setup...");
@@ -241,7 +242,9 @@ public class BluffyManager : MonoBehaviour
             if (isSinglePlayer)
             {
                 UIManager.Instance.HideSetupPanel();
+                GameLogger.Instance?.LogBluffySetup(PieceColor.White, SerializeBackRank(PieceColor.White));
                 BluffyAI.Instance.ShuffleBackRank(ChessBoard.Instance.board);
+                GameLogger.Instance?.LogBluffySetup(PieceColor.Black, SerializeBackRank(PieceColor.Black));
                 RandomizeMaskIndices();
                 BluffyAI.Instance.InitBeliefs();
                 setupComplete = true;
@@ -252,6 +255,7 @@ public class BluffyManager : MonoBehaviour
             }
             else
             {
+                GameLogger.Instance?.LogBluffySetup(PieceColor.White, SerializeBackRank(PieceColor.White));
                 setupColor = PieceColor.Black;
                 passDeviceTarget = PieceColor.Black;
                 currentPhase = BluffyPhase.PassDevice;
@@ -261,6 +265,7 @@ public class BluffyManager : MonoBehaviour
         }
         else
         {
+            GameLogger.Instance?.LogBluffySetup(PieceColor.Black, SerializeBackRank(PieceColor.Black));
             passDeviceTarget = PieceColor.White;
             currentPhase = BluffyPhase.PassDevice;
             UIManager.Instance.HideSetupPanel();
@@ -535,6 +540,7 @@ public class BluffyManager : MonoBehaviour
         if (IsKingCaptured(out PieceColor winner))
         {
             currentPhase = BluffyPhase.GameOver;
+            GameLogger.Instance?.EndGame($"{winner.ToString().ToLower()}_wins");
             UIManager.Instance.HideBluffPanel();
             UIManager.Instance.ShowBluffyGameOver(winner);
             return;
@@ -645,6 +651,8 @@ public class BluffyManager : MonoBehaviour
         if (isOnline)
             NetworkManager.Instance.PushAction(NetworkAction.Sacrifice(pos.x, pos.y));
 
+        GameLogger.Instance?.LogSacrifice(pos.x, pos.y);
+
         // Sacrifice this piece
         UnregisterPiece(clicked);
         board[pos.x, pos.y] = null;
@@ -730,6 +738,8 @@ public class BluffyManager : MonoBehaviour
             if (isOnline)
                 NetworkManager.Instance.PushAction(NetworkAction.RearrangeSwap(
                     selectedSwapPiece.x, selectedSwapPiece.y, clicked.x, clicked.y));
+
+            GameLogger.Instance?.LogRearrangeSwap(selectedSwapPiece.x, selectedSwapPiece.y, clicked.x, clicked.y);
 
             // SP: AI loses track of swapped pieces — reset beliefs
             if (isSinglePlayer && rearrangeColor == PieceColor.White)
@@ -949,6 +959,7 @@ public class BluffyManager : MonoBehaviour
         if (IsKingCaptured(out PieceColor winner))
         {
             currentPhase = BluffyPhase.GameOver;
+            GameLogger.Instance?.EndGame($"{winner.ToString().ToLower()}_wins");
             UIManager.Instance.HideBluffPanel();
             UIManager.Instance.ShowBluffyGameOver(winner);
             ClearPendingMove();
@@ -995,6 +1006,7 @@ public class BluffyManager : MonoBehaviour
         if (!isBigPiece && IsKingCaptured(out PieceColor winner))
         {
             currentPhase = BluffyPhase.GameOver;
+            GameLogger.Instance?.EndGame($"{winner.ToString().ToLower()}_wins");
             UIManager.Instance.ShowBluffyGameOver(winner);
             return;
         }
@@ -1104,6 +1116,24 @@ public class BluffyManager : MonoBehaviour
 
     // ─── Online: Setup Serialization ───
 
+    private string SerializeBackRank(PieceColor color)
+    {
+        int backY = color == PieceColor.White ? 0 : 7;
+        var board  = ChessBoard.Instance.board;
+        string[] types = new string[8];
+        for (int x = 0; x < 8; x++)
+        {
+            ChessPiece p = board[x, backY];
+            if (p != null && realTypes.ContainsKey(p))
+                types[x] = realTypes[p].ToString();
+            else if (p != null)
+                types[x] = p.type.ToString();
+            else
+                types[x] = "None";
+        }
+        return string.Join(",", types);
+    }
+
     private string SerializeMyBackRank()
     {
         PieceColor myColor = NetworkManager.Instance.MyColor;
@@ -1144,9 +1174,11 @@ public class BluffyManager : MonoBehaviour
             if (System.Enum.TryParse(types[x], out PieceType pt))
             {
                 realTypes[p] = pt;
+                p.UpdateType(pt);
             }
         }
 
+        GameLogger.Instance?.LogBluffySetup(opponentColor, opponentPositionsJson);
         RandomizeMaskIndices();
         setupComplete = true;
         currentPhase = BluffyPhase.Playing;
@@ -1163,6 +1195,7 @@ public class BluffyManager : MonoBehaviour
         ChessPiece piece = board[x, y];
         if (piece == null) return;
 
+        GameLogger.Instance?.LogSacrifice(x, y);
         UnregisterPiece(piece);
         board[x, y] = null;
         Object.Destroy(piece.gameObject);
@@ -1191,7 +1224,10 @@ public class BluffyManager : MonoBehaviour
         ChessPiece p1 = board[x1, y1];
         ChessPiece p2 = board[x2, y2];
         if (p1 != null && p2 != null)
+        {
+            GameLogger.Instance?.LogRearrangeSwap(x1, y1, x2, y2);
             SwapPiecePositionsKeepMasks(p1, p2);
+        }
 
         FinishRearrangeOnline();
     }
