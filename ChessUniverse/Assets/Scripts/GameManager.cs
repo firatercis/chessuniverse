@@ -47,10 +47,34 @@ public class GameManager : MonoBehaviour
         Instance = this;
     }
 
+    // ─── PlayerPrefs versioning ───
+    // Bump this constant whenever stored data format changes.
+    // Add a migration block below for each version increment.
+    private const int AppDataVersion = 1;
+
+    private static void MigratePlayerPrefsIfNeeded()
+    {
+        int stored = PlayerPrefs.GetInt("AppDataVersion", 0);
+        if (stored >= AppDataVersion) return;
+
+        if (stored < 1)
+        {
+            // v0 → v1: PlayerName key introduced.
+            // Nothing to migrate — new users will be prompted for their name.
+        }
+
+        // Future migrations go here:
+        // if (stored < 2) { ... }
+
+        PlayerPrefs.SetInt("AppDataVersion", AppDataVersion);
+        PlayerPrefs.Save();
+    }
+
     private void Start()
     {
         mainCam = Camera.main;
         SetupCamera();
+        MigratePlayerPrefsIfNeeded();
         ChessBoard.Instance.CreateBoard();
         UIManager.Instance.ShowMainMenu();
     }

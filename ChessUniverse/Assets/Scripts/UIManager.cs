@@ -1935,6 +1935,12 @@ public class UIManager : MonoBehaviour
                 watchTextRt.offsetMin = Vector2.zero;
                 watchTextRt.offsetMax = Vector2.zero;
             }
+
+            // ContentSizeFitter doesn't recalculate in the same frame rows are
+            // added at runtime — force an immediate layout rebuild so the scroll
+            // area actually shows the new rows instead of staying zero-height.
+            UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(
+                adminGameListContent.GetComponent<RectTransform>());
         });
     }
 
