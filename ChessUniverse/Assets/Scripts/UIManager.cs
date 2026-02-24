@@ -626,16 +626,15 @@ public class UIManager : MonoBehaviour
 
     public void ShowMainMenu()
     {
-        if (!PlayerPrefs.HasKey("PlayerName"))
-        {
-            ShowProfilePanel();
-            return;
-        }
-        // Refresh player name display
+        // Always show the main menu first so the board is never a blank screen
         var nameSub = mainMenuPanel.transform.Find("PlayerNameSub")?.GetComponent<TextMeshProUGUI>();
         if (nameSub != null)
             nameSub.text = $"Playing as: {PlayerPrefs.GetString("PlayerName", "")}";
         mainMenuPanel.SetActive(true);
+
+        // Show profile name-entry panel on top if no name has been set yet
+        if (!PlayerPrefs.HasKey("PlayerName"))
+            ShowProfilePanel();
     }
 
     public void HideMainMenu()
@@ -1588,7 +1587,8 @@ public class UIManager : MonoBehaviour
     {
         profileNameInput.text = PlayerPrefs.GetString("PlayerName", "");
         profilePanel.SetActive(true);
-        profileNameInput.ActivateInputField();
+        // Do NOT call ActivateInputField here — on WebGL it can trigger the
+        // mobile keyboard or cause a JS exception before the user interacts.
     }
 
     private void OnProfileConfirm()
@@ -1717,7 +1717,7 @@ public class UIManager : MonoBehaviour
         adminPasswordInput.text = "";
         adminPasswordError.text = "";
         adminPasswordPanel.SetActive(true);
-        adminPasswordInput.ActivateInputField();
+        // ActivateInputField skipped — unreliable on WebGL without a user gesture.
     }
 
     private void OnAdminPasswordSubmit()
