@@ -51,6 +51,7 @@ public class UIManager : MonoBehaviour
     private TextMeshProUGUI adminPasswordError;
     private GameObject adminGameListPanel;
     private GameObject adminGameListContent;
+    private TextMeshProUGUI adminStatusText;
 
     // Replay controls
     private GameObject replayControlsPanel;
@@ -1764,19 +1765,20 @@ public class UIManager : MonoBehaviour
         headerRect.anchoredPosition = new Vector2(0, -20);
         headerRect.sizeDelta = new Vector2(700, 50);
 
-        // Loading text (shown while fetching)
-        GameObject loadObj = new GameObject("LoadingText");
+        // Status text (Loading... / error / empty — shown over the scroll area)
+        GameObject loadObj = new GameObject("AdminStatusText");
         loadObj.transform.SetParent(adminGameListPanel.transform, false);
-        var loadText = loadObj.AddComponent<TextMeshProUGUI>();
-        loadText.text = "Loading...";
-        loadText.fontSize = 24;
-        loadText.alignment = TextAlignmentOptions.Center;
-        loadText.color = new Color(0.6f, 0.6f, 0.6f);
-        var loadRect = loadText.rectTransform;
-        loadRect.anchorMin = new Vector2(0.5f, 0.5f);
-        loadRect.anchorMax = new Vector2(0.5f, 0.5f);
-        loadRect.sizeDelta = new Vector2(400, 40);
-        loadRect.anchoredPosition = Vector2.zero;
+        adminStatusText = loadObj.AddComponent<TextMeshProUGUI>();
+        adminStatusText.text = "Loading...";
+        adminStatusText.fontSize = 24;
+        adminStatusText.alignment = TextAlignmentOptions.Center;
+        adminStatusText.color = new Color(0.6f, 0.6f, 0.6f);
+        adminStatusText.enableWordWrapping = true;
+        var loadRect = adminStatusText.rectTransform;
+        loadRect.anchorMin = new Vector2(0.1f, 0.15f);
+        loadRect.anchorMax = new Vector2(0.9f, 0.85f);
+        loadRect.offsetMin = Vector2.zero;
+        loadRect.offsetMax = Vector2.zero;
 
         // ScrollRect
         GameObject scrollObj = new GameObject("GameScrollView");
@@ -1836,9 +1838,11 @@ public class UIManager : MonoBehaviour
     private void ShowAdminGameList()
     {
         adminGameListPanel.SetActive(true);
-        // Clear existing items
         foreach (Transform child in adminGameListContent.transform)
             Destroy(child.gameObject);
+        adminStatusText.text = "Loading...";
+        adminStatusText.color = new Color(0.6f, 0.6f, 0.6f);
+        adminStatusText.gameObject.SetActive(true);
 
         GameLogger.Instance?.FetchRecentGames((games, fetchError) =>
         {
@@ -1846,20 +1850,23 @@ public class UIManager : MonoBehaviour
             foreach (Transform child in adminGameListContent.transform)
                 Destroy(child.gameObject);
 
-            if (fetchError != null || games.Count == 0)
+            if (fetchError != null)
             {
-                var noGamesObj = new GameObject("NoGames");
-                noGamesObj.transform.SetParent(adminGameListContent.transform, false);
-                var noGamesText = noGamesObj.AddComponent<TextMeshProUGUI>();
-                noGamesText.text = fetchError ?? "No games recorded yet.";
-                noGamesText.fontSize = fetchError != null ? 18 : 22;
-                noGamesText.alignment = TextAlignmentOptions.Center;
-                noGamesText.color = fetchError != null ? new Color(1f, 0.5f, 0.5f) : new Color(0.6f, 0.6f, 0.6f);
-                noGamesText.enableWordWrapping = true;
-                var noGamesRt = noGamesText.rectTransform;
-                noGamesRt.sizeDelta = new Vector2(0, 80);
+                adminStatusText.text = fetchError;
+                adminStatusText.color = new Color(1f, 0.45f, 0.45f);
+                adminStatusText.gameObject.SetActive(true);
                 return;
             }
+
+            if (games.Count == 0)
+            {
+                adminStatusText.text = "No games recorded yet.";
+                adminStatusText.color = new Color(0.6f, 0.6f, 0.6f);
+                adminStatusText.gameObject.SetActive(true);
+                return;
+            }
+
+            adminStatusText.gameObject.SetActive(false);
 
             foreach (var game in games)
             {
