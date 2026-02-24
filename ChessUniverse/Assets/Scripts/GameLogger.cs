@@ -102,18 +102,39 @@ public class GameLogger : MonoBehaviour
 
     // ─── Admin fetch ───
 
-    public void FetchRecentGames(Action<List<GameSummary>> onDone)
+    public void FetchRecentGames(Action<List<GameSummary>, string> onDone)
         => StartCoroutine(FetchGamesCoroutine(onDone));
 
-    private IEnumerator FetchGamesCoroutine(Action<List<GameSummary>> onDone)
+    private IEnumerator FetchGamesCoroutine(Action<List<GameSummary>, string> onDone)
     {
-        using var req = UnityWebRequest.Get($"{firebaseUrl}/games.json?limitToLast=40");
+        if (string.IsNullOrEmpty(firebaseUrl))
+        {
+            onDone?.Invoke(new List<GameSummary>(), "Firebase URL not set in NetworkSettings");
+            yield break;
+        }
+
+        using var req = UnityWebRequest.Get($"{firebaseUrl}/games.json");
         yield return req.SendWebRequest();
+
         var list = new List<GameSummary>();
+        string error = null;
+
         if (req.result == UnityWebRequest.Result.Success)
-            list = ParseGameList(req.downloadHandler.text);
+        {
+            string body = req.downloadHandler.text;
+            if (body == "null" || string.IsNullOrEmpty(body))
+                error = "No games in database yet";
+            else
+                list = ParseGameList(body);
+        }
+        else
+        {
+            error = $"HTTP {req.responseCode}: {req.downloadHandler.text}";
+        }
+
         list.Sort((a, b) => b.startedAt.CompareTo(a.startedAt));
-        onDone?.Invoke(list);
+        if (list.Count > 40) list = list.GetRange(0, 40);
+        onDone?.Invoke(list, error);
     }
 
     public void FetchGameReplay(string gameId, Action<string, List<ReplayAction>> onDone)

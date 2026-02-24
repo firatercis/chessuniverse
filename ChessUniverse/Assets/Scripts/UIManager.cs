@@ -1840,23 +1840,24 @@ public class UIManager : MonoBehaviour
         foreach (Transform child in adminGameListContent.transform)
             Destroy(child.gameObject);
 
-        GameLogger.Instance?.FetchRecentGames((games) =>
+        GameLogger.Instance?.FetchRecentGames((games, fetchError) =>
         {
             if (!adminGameListPanel.activeSelf) return;
             foreach (Transform child in adminGameListContent.transform)
                 Destroy(child.gameObject);
 
-            if (games.Count == 0)
+            if (fetchError != null || games.Count == 0)
             {
                 var noGamesObj = new GameObject("NoGames");
                 noGamesObj.transform.SetParent(adminGameListContent.transform, false);
                 var noGamesText = noGamesObj.AddComponent<TextMeshProUGUI>();
-                noGamesText.text = "No games recorded yet.";
-                noGamesText.fontSize = 22;
+                noGamesText.text = fetchError ?? "No games recorded yet.";
+                noGamesText.fontSize = fetchError != null ? 18 : 22;
                 noGamesText.alignment = TextAlignmentOptions.Center;
-                noGamesText.color = new Color(0.6f, 0.6f, 0.6f);
+                noGamesText.color = fetchError != null ? new Color(1f, 0.5f, 0.5f) : new Color(0.6f, 0.6f, 0.6f);
+                noGamesText.enableWordWrapping = true;
                 var noGamesRt = noGamesText.rectTransform;
-                noGamesRt.sizeDelta = new Vector2(0, 40);
+                noGamesRt.sizeDelta = new Vector2(0, 80);
                 return;
             }
 
@@ -1891,7 +1892,7 @@ public class UIManager : MonoBehaviour
                 var infoText = infoObj.AddComponent<TextMeshProUGUI>();
                 infoText.text = $"<b>{modeShort}</b>  {resultStr}  <color=#999>{timeAgo}</color>  <color=#8cf>{player}</color>";
                 infoText.fontSize = 19;
-                infoText.alignment = TextAlignmentOptions.MidpointLeft;
+                infoText.alignment = TextAlignmentOptions.MidlineLeft;
                 infoText.color = Color.white;
                 var infoRt = infoText.rectTransform;
                 infoRt.sizeDelta = new Vector2(600, 0);
