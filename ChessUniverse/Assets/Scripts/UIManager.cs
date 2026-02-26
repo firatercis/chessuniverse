@@ -458,81 +458,77 @@ public class UIManager : MonoBehaviour
         seedButtonsPanel.transform.SetParent(parent.transform, false);
 
         var panelImg = seedButtonsPanel.AddComponent<Image>();
-        panelImg.color = new Color(0.15f, 0.13f, 0.08f, 0.85f);
+        panelImg.color = new Color(0.15f, 0.13f, 0.08f, 0.88f);
 
+        // Horizontal strip above the board, below turn indicator
         var panelRect = panelImg.rectTransform;
-        panelRect.anchorMin = new Vector2(1f, 0.5f);
-        panelRect.anchorMax = new Vector2(1f, 0.5f);
-        panelRect.pivot = new Vector2(1f, 0.5f);
-        panelRect.anchoredPosition = new Vector2(-10, 0);
-        panelRect.sizeDelta = new Vector2(130, 310);
+        panelRect.anchorMin = new Vector2(0.5f, 1f);
+        panelRect.anchorMax = new Vector2(0.5f, 1f);
+        panelRect.pivot = new Vector2(0.5f, 1f);
+        panelRect.anchoredPosition = new Vector2(0, -85);
+        panelRect.sizeDelta = new Vector2(300, 56);
 
-        // Title
-        GameObject titleObj = new GameObject("SeedTitle");
-        titleObj.transform.SetParent(seedButtonsPanel.transform, false);
-        var titleText = titleObj.AddComponent<TextMeshProUGUI>();
-        titleText.text = "Plant";
-        titleText.fontSize = 22;
-        titleText.alignment = TextAlignmentOptions.Center;
-        titleText.color = new Color(1f, 0.85f, 0.2f);
-        titleText.fontStyle = FontStyles.Bold;
-        var titleRect = titleText.rectTransform;
-        titleRect.anchorMin = new Vector2(0.5f, 0.5f);
-        titleRect.anchorMax = new Vector2(0.5f, 0.5f);
-        titleRect.sizeDelta = new Vector2(120, 30);
-        titleRect.anchoredPosition = new Vector2(0, 130);
-
-        // Piece buttons stacked vertically
-        string[] labels = { "Pawn (1)", "Knight (3)", "Bishop (3)", "Rook (5)", "Queen (9)" };
+        // 5 compact piece-symbol buttons in a row
+        string[] letters = { "P", "N", "B", "R", "Q" };
+        string[] turns   = { "1", "3", "3", "5", "9" };
         PieceType[] types = { PieceType.Pawn, PieceType.Knight, PieceType.Bishop, PieceType.Rook, PieceType.Queen };
 
         for (int i = 0; i < 5; i++)
         {
             PieceType t = types[i];
-            float yPos = 80 - i * 55;
-            CreateSeedButton(seedButtonsPanel, $"Seed_{types[i]}", labels[i],
-                new Vector2(0, yPos), () => GameManager.Instance.OnSeedButtonClick(t));
+            float xPos = -120 + i * 60;
+
+            GameObject btnObj = new GameObject($"Seed_{types[i]}");
+            btnObj.transform.SetParent(seedButtonsPanel.transform, false);
+
+            var btnImg = btnObj.AddComponent<Image>();
+            btnImg.color = new Color(0.7f, 0.6f, 0.15f);
+
+            var btnRect = btnImg.rectTransform;
+            btnRect.anchorMin = new Vector2(0.5f, 0.5f);
+            btnRect.anchorMax = new Vector2(0.5f, 0.5f);
+            btnRect.sizeDelta = new Vector2(52, 46);
+            btnRect.anchoredPosition = new Vector2(xPos, 0);
+
+            var button = btnObj.AddComponent<Button>();
+            button.targetGraphic = btnImg;
+            var colors = button.colors;
+            colors.highlightedColor = new Color(0.85f, 0.75f, 0.2f);
+            colors.pressedColor = new Color(0.5f, 0.4f, 0.1f);
+            button.colors = colors;
+            button.onClick.AddListener(() => GameManager.Instance.OnSeedButtonClick(t));
+
+            // Piece letter (large, top area)
+            GameObject letterObj = new GameObject("Letter");
+            letterObj.transform.SetParent(btnObj.transform, false);
+            var letterTmp = letterObj.AddComponent<TextMeshProUGUI>();
+            letterTmp.text = letters[i];
+            letterTmp.fontSize = 24;
+            letterTmp.alignment = TextAlignmentOptions.Center;
+            letterTmp.color = Color.white;
+            letterTmp.fontStyle = FontStyles.Bold;
+            var letterRt = letterTmp.rectTransform;
+            letterRt.anchorMin = new Vector2(0, 0.28f);
+            letterRt.anchorMax = new Vector2(1, 1);
+            letterRt.offsetMin = Vector2.zero;
+            letterRt.offsetMax = Vector2.zero;
+
+            // Growth turns (small, bottom area)
+            GameObject turnObj = new GameObject("Turns");
+            turnObj.transform.SetParent(btnObj.transform, false);
+            var turnTmp = turnObj.AddComponent<TextMeshProUGUI>();
+            turnTmp.text = turns[i];
+            turnTmp.fontSize = 13;
+            turnTmp.alignment = TextAlignmentOptions.Center;
+            turnTmp.color = new Color(1f, 0.9f, 0.5f);
+            var turnRt = turnTmp.rectTransform;
+            turnRt.anchorMin = new Vector2(0, 0);
+            turnRt.anchorMax = new Vector2(1, 0.32f);
+            turnRt.offsetMin = Vector2.zero;
+            turnRt.offsetMax = Vector2.zero;
         }
 
         seedButtonsPanel.SetActive(false);
-    }
-
-    private void CreateSeedButton(GameObject parent, string name, string label, Vector2 position,
-        UnityEngine.Events.UnityAction onClick)
-    {
-        GameObject btnObj = new GameObject(name);
-        btnObj.transform.SetParent(parent.transform, false);
-
-        var btnImg = btnObj.AddComponent<Image>();
-        btnImg.color = new Color(0.7f, 0.6f, 0.15f);
-
-        var btnRect = btnImg.rectTransform;
-        btnRect.anchorMin = new Vector2(0.5f, 0.5f);
-        btnRect.anchorMax = new Vector2(0.5f, 0.5f);
-        btnRect.sizeDelta = new Vector2(115, 45);
-        btnRect.anchoredPosition = position;
-
-        var button = btnObj.AddComponent<Button>();
-        button.targetGraphic = btnImg;
-        var colors = button.colors;
-        colors.highlightedColor = new Color(0.85f, 0.75f, 0.2f);
-        colors.pressedColor = new Color(0.5f, 0.4f, 0.1f);
-        button.colors = colors;
-        button.onClick.AddListener(onClick);
-
-        GameObject textObj = new GameObject("Text");
-        textObj.transform.SetParent(btnObj.transform, false);
-        var btnText = textObj.AddComponent<TextMeshProUGUI>();
-        btnText.text = label;
-        btnText.fontSize = 19;
-        btnText.alignment = TextAlignmentOptions.Center;
-        btnText.color = Color.white;
-        btnText.fontStyle = FontStyles.Bold;
-        var textRect = btnText.rectTransform;
-        textRect.anchorMin = Vector2.zero;
-        textRect.anchorMax = Vector2.one;
-        textRect.offsetMin = Vector2.zero;
-        textRect.offsetMax = Vector2.zero;
     }
 
     private void CreateWorldLabel(string text, Vector3 position, float fontSize)
@@ -1818,7 +1814,7 @@ public class UIManager : MonoBehaviour
         vlg.childForceExpandWidth = true;
         vlg.childForceExpandHeight = false;
         vlg.childControlWidth = true;
-        vlg.childControlHeight = false;
+        vlg.childControlHeight = true;
         var csf = adminGameListContent.AddComponent<ContentSizeFitter>();
         csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
@@ -1828,9 +1824,13 @@ public class UIManager : MonoBehaviour
         scrollRect.horizontal = false;
         scrollRect.scrollSensitivity = 25;
 
-        // Close button
-        CreateButton(adminGameListPanel, "AdminCloseBtn", "Close", new Vector2(0, 30),
+        // Close button (anchored to bottom center)
+        var closeBtn = CreateButton(adminGameListPanel, "AdminCloseBtn", "Close", Vector2.zero,
             () => adminGameListPanel.SetActive(false), 180);
+        var closeBtnRt = closeBtn.GetComponent<RectTransform>();
+        closeBtnRt.anchorMin = new Vector2(0.5f, 0f);
+        closeBtnRt.anchorMax = new Vector2(0.5f, 0f);
+        closeBtnRt.anchoredPosition = new Vector2(0, 32);
 
         adminGameListPanel.SetActive(false);
     }
@@ -1868,6 +1868,12 @@ public class UIManager : MonoBehaviour
 
             adminStatusText.gameObject.SetActive(false);
 
+            // Table header
+            CreateGameTableRow(adminGameListContent.transform,
+                "Mode", "Player", "Result", "Time",
+                null, null, new Color(0.9f, 0.75f, 0.25f), true);
+
+            // Game rows
             foreach (var game in games)
             {
                 string gameId    = game.gameId;
@@ -1875,73 +1881,98 @@ public class UIManager : MonoBehaviour
                 string modeShort = game.mode == "SeedChess" ? "Seed" :
                                    game.mode == "BluffyChess" ? "Bluffy" : "Classic";
                 string resultStr = game.result == "ongoing" ? "Ongoing" :
-                                   game.result.Replace("_wins", " Wins").Replace("white", "White").Replace("black", "Black");
+                                   game.result.Replace("_wins", " Wins")
+                                       .Replace("white", "White").Replace("black", "Black");
                 string player    = string.IsNullOrEmpty(game.playerName) ? "?" : game.playerName;
 
-                // Row container
-                GameObject rowObj = new GameObject($"Row_{gameId}");
-                rowObj.transform.SetParent(adminGameListContent.transform, false);
-                var rowImg = rowObj.AddComponent<Image>();
-                rowImg.color = new Color(0.12f, 0.12f, 0.17f);
-                var rowRt = rowImg.rectTransform;
-                rowRt.sizeDelta = new Vector2(0, 52);
-                var rowLayout = rowObj.AddComponent<HorizontalLayoutGroup>();
-                rowLayout.padding = new RectOffset(12, 12, 0, 0);
-                rowLayout.spacing = 10;
-                rowLayout.childAlignment = TextAnchor.MiddleLeft;
-                rowLayout.childForceExpandWidth = false;
-                rowLayout.childForceExpandHeight = true;
-                rowLayout.childControlHeight = true;
-
-                // Info text
-                GameObject infoObj = new GameObject("RowInfo");
-                infoObj.transform.SetParent(rowObj.transform, false);
-                var infoText = infoObj.AddComponent<TextMeshProUGUI>();
-                infoText.text = $"<b>{modeShort}</b>  {resultStr}  <color=#999>{timeAgo}</color>  <color=#8cf>{player}</color>";
-                infoText.fontSize = 19;
-                infoText.alignment = TextAlignmentOptions.MidlineLeft;
-                infoText.color = Color.white;
-                var infoRt = infoText.rectTransform;
-                infoRt.sizeDelta = new Vector2(600, 0);
-                var infoLE = infoObj.AddComponent<LayoutElement>();
-                infoLE.flexibleWidth = 1;
-                infoLE.minHeight = 40;
-
-                // Watch button
-                GameObject watchBtnObj = new GameObject("WatchBtn");
-                watchBtnObj.transform.SetParent(rowObj.transform, false);
-                var watchImg = watchBtnObj.AddComponent<Image>();
-                watchImg.color = new Color(0.25f, 0.45f, 0.7f);
-                var watchBtn = watchBtnObj.AddComponent<Button>();
-                watchBtn.targetGraphic = watchImg;
-                var watchColors = watchBtn.colors;
-                watchColors.highlightedColor = new Color(0.35f, 0.55f, 0.85f);
-                watchColors.pressedColor = new Color(0.15f, 0.3f, 0.5f);
-                watchBtn.colors = watchColors;
-                var watchLE = watchBtnObj.AddComponent<LayoutElement>();
-                watchLE.preferredWidth = 100;
-                watchLE.minHeight = 36;
-                watchBtn.onClick.AddListener(() => OnWatchGameClicked(gameId, game.mode));
-                GameObject watchTextObj = new GameObject("WatchText");
-                watchTextObj.transform.SetParent(watchBtnObj.transform, false);
-                var watchText = watchTextObj.AddComponent<TextMeshProUGUI>();
-                watchText.text = "Watch";
-                watchText.fontSize = 18;
-                watchText.alignment = TextAlignmentOptions.Center;
-                watchText.color = Color.white;
-                var watchTextRt = watchText.rectTransform;
-                watchTextRt.anchorMin = Vector2.zero;
-                watchTextRt.anchorMax = Vector2.one;
-                watchTextRt.offsetMin = Vector2.zero;
-                watchTextRt.offsetMax = Vector2.zero;
+                CreateGameTableRow(adminGameListContent.transform,
+                    modeShort, player, resultStr, timeAgo,
+                    gameId, game.mode, Color.white, false);
             }
 
-            // ContentSizeFitter doesn't recalculate in the same frame rows are
-            // added at runtime — force an immediate layout rebuild so the scroll
-            // area actually shows the new rows instead of staying zero-height.
-            UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(
+            LayoutRebuilder.ForceRebuildLayoutImmediate(
                 adminGameListContent.GetComponent<RectTransform>());
         });
+    }
+
+    // ─── Admin Table Helpers ───
+
+    private void CreateGameTableRow(Transform parent,
+        string mode, string player, string result, string time,
+        string gameId, string gameMode, Color textColor, bool isHeader)
+    {
+        float rowHeight = isHeader ? 34 : 44;
+
+        var rowObj = new GameObject(isHeader ? "HeaderRow" : $"Row_{gameId}");
+        rowObj.transform.SetParent(parent, false);
+
+        var rowImg = rowObj.AddComponent<Image>();
+        rowImg.color = isHeader ? new Color(0.14f, 0.14f, 0.2f) : new Color(0.1f, 0.1f, 0.15f);
+
+        var le = rowObj.AddComponent<LayoutElement>();
+        le.preferredHeight = rowHeight;
+
+        float fs = isHeader ? 15f : 17f;
+        AddTableCell(rowObj.transform, mode,   0.02f, 0.17f, TextAlignmentOptions.MidlineLeft,   fs).color = textColor;
+        AddTableCell(rowObj.transform, player, 0.17f, 0.37f, TextAlignmentOptions.MidlineLeft,   fs).color = textColor;
+        AddTableCell(rowObj.transform, result, 0.37f, 0.60f, TextAlignmentOptions.MidlineLeft,   fs).color = textColor;
+        AddTableCell(rowObj.transform, time,   0.60f, 0.78f, TextAlignmentOptions.MidlineCenter, fs).color = textColor;
+
+        if (!isHeader && gameId != null)
+        {
+            // Watch button (anchor-based, no layout group needed)
+            GameObject watchBtnObj = new GameObject("WatchBtn");
+            watchBtnObj.transform.SetParent(rowObj.transform, false);
+            var watchImg = watchBtnObj.AddComponent<Image>();
+            watchImg.color = new Color(0.25f, 0.45f, 0.7f);
+            var watchRect = watchImg.rectTransform;
+            watchRect.anchorMin = new Vector2(0.80f, 0.12f);
+            watchRect.anchorMax = new Vector2(0.97f, 0.88f);
+            watchRect.offsetMin = Vector2.zero;
+            watchRect.offsetMax = Vector2.zero;
+
+            var watchBtn = watchBtnObj.AddComponent<Button>();
+            watchBtn.targetGraphic = watchImg;
+            var wc = watchBtn.colors;
+            wc.highlightedColor = new Color(0.35f, 0.55f, 0.85f);
+            wc.pressedColor = new Color(0.15f, 0.3f, 0.5f);
+            watchBtn.colors = wc;
+            string gid = gameId;
+            string gm = gameMode;
+            watchBtn.onClick.AddListener(() => OnWatchGameClicked(gid, gm));
+
+            GameObject watchTextObj = new GameObject("WText");
+            watchTextObj.transform.SetParent(watchBtnObj.transform, false);
+            var watchText = watchTextObj.AddComponent<TextMeshProUGUI>();
+            watchText.text = "Watch";
+            watchText.fontSize = 15;
+            watchText.alignment = TextAlignmentOptions.Center;
+            watchText.color = Color.white;
+            var wrt = watchText.rectTransform;
+            wrt.anchorMin = Vector2.zero;
+            wrt.anchorMax = Vector2.one;
+            wrt.offsetMin = Vector2.zero;
+            wrt.offsetMax = Vector2.zero;
+        }
+    }
+
+    private static TextMeshProUGUI AddTableCell(Transform parent, string text,
+        float anchorLeft, float anchorRight, TextAlignmentOptions align, float fontSize)
+    {
+        var obj = new GameObject("Cell");
+        obj.transform.SetParent(parent, false);
+        var tmp = obj.AddComponent<TextMeshProUGUI>();
+        tmp.text = text;
+        tmp.fontSize = fontSize;
+        tmp.alignment = align;
+        tmp.color = Color.white;
+        tmp.overflowMode = TextOverflowModes.Ellipsis;
+        var rt = tmp.rectTransform;
+        rt.anchorMin = new Vector2(anchorLeft, 0);
+        rt.anchorMax = new Vector2(anchorRight, 1);
+        rt.offsetMin = new Vector2(5, 2);
+        rt.offsetMax = new Vector2(-2, -2);
+        return tmp;
     }
 
     private void OnWatchGameClicked(string gameId, string mode)
