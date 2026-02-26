@@ -25,15 +25,15 @@ public class ChessBoard : MonoBehaviour
     private Vector2Int lastMoveTo;
     private bool hasLastMove;
 
-    private Sprite lightSquareSprite;
-    private Sprite darkSquareSprite;
+    // Board square colors — chess.com-style brown
+    private static readonly Color LightSquareColor = new Color(0.941f, 0.851f, 0.710f); // #F0D9B5
+    private static readonly Color DarkSquareColor  = new Color(0.710f, 0.533f, 0.388f); // #B58863
+
     private Sprite _highlightSprite;
 
     private void Awake()
     {
         Instance = this;
-        lightSquareSprite = Resources.Load<Sprite>("ChessPieces/square_light");
-        darkSquareSprite = Resources.Load<Sprite>("ChessPieces/square_dark");
     }
 
     public void CreateBoard()
@@ -48,20 +48,8 @@ public class ChessBoard : MonoBehaviour
                 var sr = sq.AddComponent<SpriteRenderer>();
 
                 bool isLight = (x + y) % 2 != 0;
-                Sprite sqSprite = isLight ? lightSquareSprite : darkSquareSprite;
-                if (sqSprite != null)
-                {
-                    sr.sprite = sqSprite;
-                    float spriteWorldSize = sqSprite.rect.width / sqSprite.pixelsPerUnit;
-                    float scale = 1f / spriteWorldSize;
-                    sq.transform.localScale = new Vector3(scale, scale, 1f);
-                    sr.color = Color.white;
-                }
-                else
-                {
-                    sr.sprite = CreateFallbackSprite();
-                    sr.color = isLight ? new Color(0.93f, 0.84f, 0.71f) : new Color(0.70f, 0.53f, 0.36f);
-                }
+                sr.sprite = CreateFallbackSprite();
+                sr.color = isLight ? LightSquareColor : DarkSquareColor;
                 sr.sortingOrder = 0;
                 squares[x, y] = sq;
                 squareRenderers[x, y] = sr;
