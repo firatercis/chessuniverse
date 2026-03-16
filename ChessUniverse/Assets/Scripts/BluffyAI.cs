@@ -399,6 +399,17 @@ public class BluffyAI : MonoBehaviour
 
         float score = EvaluateBoard(board);
 
+        // Hanging piece: penalize non-pawn pieces on squares attacked by enemy pawns
+        if (piece.type != PieceType.Pawn)
+        {
+            int pieceVal = GetPieceValue(piece.type);
+            if (IsSquareAttackedByPawn(target, PieceColor.White, board))
+                score += pieceVal - 100; // Net material loss (positive = bad for Black)
+        }
+
+        // King safety: pawn shield around Black king
+        score += EvaluateBlackKingSafety(board);
+
         // Undo
         piece.x = origX;
         piece.y = origY;
@@ -606,6 +617,63 @@ public class BluffyAI : MonoBehaviour
             return false;
 
         return true;
+    }
+
+    private static bool IsSquareAttackedByPawn(Vector2Int sq, PieceColor attackerColor, ChessPiece[,] board)
+    {
+        // White pawns attack upward (y+1), so a White pawn at y-1 attacks this square
+        // Black pawns attack downward (y-1), so a Black pawn at y+1 attacks this square
+        int pawnY = attackerColor == PieceColor.White ? sq.y - 1 : sq.y + 1;
+        if (pawnY < 0 || pawnY > 7) return false;
+
+        for (int dx = -1; dx <= 1; dx += 2)
+        {
+            int px = sq.x + dx;
+            if (px < 0 || px > 7) continue;
+            ChessPiece p = board[px, pawnY];
+            if (p != null && p.color == attackerColor && p.type == PieceType.Pawn)
+                return true;
+        }
+        return false;
+    }
+
+    private static float EvaluateBlackKingSafety(ChessPiece[,] board)
+    {
+        // Find Black king
+        int kx = -1, ky = -1;
+        for (int x = 0; x < 8; x++)
+        {
+            for (int y = 0; y < 8; y++)
+            {
+                ChessPiece p = board[x, y];
+                if (p != null && p.color == PieceColor.Black && p.type == PieceType.King)
+                { kx = x; ky = y; break; }
+            }
+            if (kx != -1) break;
+        }
+        if (kx == -1) return 0;
+
+        float penalty = 0;
+
+        // Pawn shield: friendly pawns on rank in front of king (y-1 for Black)
+        int shieldY = ky - 1;
+        if (shieldY >= 0)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                int sx = kx + dx;
+                if (sx < 0 || sx > 7) continue;
+                ChessPiece p = board[sx, shieldY];
+                if (p == null || p.color != PieceColor.Black || p.type != PieceType.Pawn)
+                    penalty += 15;
+            }
+        }
+
+        // Penalize advanced king (Black king should stay on ranks 6-7)
+        if (ky < 5)
+            penalty += (5 - ky) * 10;
+
+        return penalty; // Positive = worse for Black (AI minimizes)
     }
 
     private int GetPieceValue(PieceType type)

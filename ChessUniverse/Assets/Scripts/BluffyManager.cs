@@ -462,6 +462,9 @@ public class BluffyManager : MonoBehaviour
             }
         }
 
+        GameLogger.Instance?.LogBluffCaught(pendingFrom.x, pendingFrom.y, pendingTo.x, pendingTo.y,
+            capturedByPending != null ? capturedRealType : (PieceType?)null);
+
         UndoPendingMove();
 
         ChessPiece caughtPiece = pendingMovePiece;
@@ -609,6 +612,7 @@ public class BluffyManager : MonoBehaviour
         ChessPiece sacrifice = BluffyAI.Instance.ChooseSacrifice(PieceColor.Black);
         if (sacrifice != null)
         {
+            GameLogger.Instance?.LogSacrifice(sacrifice.x, sacrifice.y);
             UnregisterPiece(sacrifice);
             board[sacrifice.x, sacrifice.y] = null;
             Object.Destroy(sacrifice.gameObject);
@@ -632,8 +636,12 @@ public class BluffyManager : MonoBehaviour
             {
                 ChessPiece swapTarget = BluffyAI.Instance.ChooseSwapTarget(movedPiece);
                 if (swapTarget != null)
+                {
+                    GameLogger.Instance?.LogRearrangeSwap(movedPiece.x, movedPiece.y, swapTarget.x, swapTarget.y);
                     SwapPiecePositionsKeepMasks(movedPiece, swapTarget);
+                }
             }
+            GameLogger.Instance?.LogRearrangeDone();
             FinishRearrangeSP();
         }
     }
@@ -696,8 +704,12 @@ public class BluffyManager : MonoBehaviour
                 {
                     ChessPiece swapTarget = BluffyAI.Instance.ChooseSwapTarget(movedPiece);
                     if (swapTarget != null)
+                    {
+                        GameLogger.Instance?.LogRearrangeSwap(movedPiece.x, movedPiece.y, swapTarget.x, swapTarget.y);
                         SwapPiecePositionsKeepMasks(movedPiece, swapTarget);
+                    }
                 }
+                GameLogger.Instance?.LogRearrangeDone();
                 FinishRearrangeSP();
             }
         }
@@ -761,6 +773,8 @@ public class BluffyManager : MonoBehaviour
         if (isOnline && !rearrangeSwapDone && rearrangeColor == NetworkManager.Instance.MyColor)
             NetworkManager.Instance.PushAction(NetworkAction.RearrangeSkip());
         rearrangeSwapDone = false;
+
+        GameLogger.Instance?.LogRearrangeDone();
 
         selectedSwapPiece = null;
         ChessBoard.Instance.ClearHighlights();

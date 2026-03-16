@@ -44,6 +44,25 @@ public class ChessPiece : MonoBehaviour
         { PieceType.Pawn, "pawn" },
     };
 
+    // Sprite cache — loaded from sprite sheet (sliced at import time)
+    private static Dictionary<string, Sprite> _spriteCache;
+
+    public static Sprite GetPieceSprite(PieceColor color, PieceType type)
+    {
+        if (!PieceNames.ContainsKey(type)) return null;
+
+        if (_spriteCache == null)
+        {
+            _spriteCache = new Dictionary<string, Sprite>();
+            Sprite[] all = Resources.LoadAll<Sprite>("ChessPieces/Chess_Pieces_Sprite");
+            foreach (var s in all)
+                _spriteCache[s.name] = s;
+        }
+
+        string spriteName = $"{(color == PieceColor.White ? "w" : "b")}_{PieceNames[type]}";
+        return _spriteCache.TryGetValue(spriteName, out var s2) ? s2 : null;
+    }
+
     public void Init(PieceType type, PieceColor color, int x, int y)
     {
         this.type = type;
@@ -56,19 +75,13 @@ public class ChessPiece : MonoBehaviour
         if (spriteRenderer == null)
             spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
 
-        if (!PieceNames.ContainsKey(type)) return;
-
-        string colorPrefix = color == PieceColor.White ? "w" : "b";
-        string spritePath = $"ChessPieces/{colorPrefix}_{PieceNames[type]}";
-        Sprite sprite = Resources.Load<Sprite>(spritePath);
+        Sprite sprite = GetPieceSprite(color, type);
         if (sprite != null)
         {
             spriteRenderer.sprite = sprite;
             spriteRenderer.sortingOrder = 2;
-            float pixelsPerUnit = sprite.pixelsPerUnit;
-            float spriteWorldSize = sprite.rect.height / pixelsPerUnit;
-            float targetSize = 0.85f;
-            float scale = targetSize / spriteWorldSize;
+            float spriteWorldSize = sprite.rect.height / sprite.pixelsPerUnit;
+            float scale = 0.935f / spriteWorldSize;
             transform.localScale = new Vector3(scale, scale, 1f);
         }
     }
@@ -78,17 +91,13 @@ public class ChessPiece : MonoBehaviour
         type = newType;
         if (spriteRenderer == null)
             spriteRenderer = GetComponent<SpriteRenderer>();
-        if (!PieceNames.ContainsKey(newType)) return;
 
-        string colorPrefix = color == PieceColor.White ? "w" : "b";
-        string spritePath = $"ChessPieces/{colorPrefix}_{PieceNames[newType]}";
-        Sprite sprite = Resources.Load<Sprite>(spritePath);
+        Sprite sprite = GetPieceSprite(color, newType);
         if (sprite != null)
         {
             spriteRenderer.sprite = sprite;
             float spriteWorldSize = sprite.rect.height / sprite.pixelsPerUnit;
-            float targetSize = 0.85f;
-            float scale = targetSize / spriteWorldSize;
+            float scale = 0.935f / spriteWorldSize;
             transform.localScale = new Vector3(scale, scale, 1f);
         }
     }
@@ -145,7 +154,7 @@ public class ChessPiece : MonoBehaviour
         maskSr.sortingOrder = 3;
         float pixelsPerUnit = maskSprite.pixelsPerUnit;
         float spriteWorldSize = maskSprite.rect.height / pixelsPerUnit;
-        float targetSize = overlay ? 0.55f : 0.85f;
+        float targetSize = overlay ? 0.55f : 0.935f;
         float parentScale = transform.localScale.x;
         float scale = (targetSize / spriteWorldSize) / (parentScale > 0 ? parentScale : 1f);
         maskObj.transform.localScale = new Vector3(scale, scale, 1f);

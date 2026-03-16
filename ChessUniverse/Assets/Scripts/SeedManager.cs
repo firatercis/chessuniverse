@@ -167,17 +167,7 @@ public class SeedManager : MonoBehaviour
         var spriteObj = new GameObject("Sprite");
         spriteObj.transform.SetParent(obj.transform, false);
         var sr = spriteObj.AddComponent<SpriteRenderer>();
-        string colorPrefix = color == PieceColor.White ? "w" : "b";
-        string pieceName = targetType switch
-        {
-            PieceType.Pawn => "pawn",
-            PieceType.Knight => "knight",
-            PieceType.Bishop => "bishop",
-            PieceType.Rook => "rook",
-            PieceType.Queen => "queen",
-            _ => "pawn"
-        };
-        Sprite sprite = Resources.Load<Sprite>($"ChessPieces/{colorPrefix}_{pieceName}");
+        Sprite sprite = ChessPiece.GetPieceSprite(color, targetType);
         if (sprite != null)
         {
             sr.sprite = sprite;

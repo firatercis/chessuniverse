@@ -100,6 +100,15 @@ public class GameLogger : MonoBehaviour
     public void LogRearrangeSwap(int x1, int y1, int x2, int y2)
         => Push($"{{\"type\":\"rearrangeSwap\",\"x1\":{x1},\"y1\":{y1},\"x2\":{x2},\"y2\":{y2},\"ts\":{Now()}}}");
 
+    public void LogBluffCaught(int fx, int fy, int tx, int ty, PieceType? capturedType = null)
+    {
+        string cap = capturedType.HasValue ? $",\"capturedType\":\"{capturedType.Value}\"" : "";
+        Push($"{{\"type\":\"bluffCaught\",\"fx\":{fx},\"fy\":{fy},\"tx\":{tx},\"ty\":{ty}{cap},\"ts\":{Now()}}}");
+    }
+
+    public void LogRearrangeDone()
+        => Push($"{{\"type\":\"rearrangeDone\",\"ts\":{Now()}}}");
+
     // ─── Admin fetch ───
 
     public void FetchRecentGames(Action<List<GameSummary>, string> onDone)
@@ -133,26 +142,27 @@ public class GameLogger : MonoBehaviour
         }
 
         list.Sort((a, b) => b.startedAt.CompareTo(a.startedAt));
-        if (list.Count > 40) list = list.GetRange(0, 40);
         onDone?.Invoke(list, error);
     }
 
-    public void FetchGameReplay(string gameId, Action<string, List<ReplayAction>> onDone)
+    public void FetchGameReplay(string gameId, Action<string, string, List<ReplayAction>> onDone)
         => StartCoroutine(FetchReplayCoroutine(gameId, onDone));
 
-    private IEnumerator FetchReplayCoroutine(string gameId, Action<string, List<ReplayAction>> onDone)
+    private IEnumerator FetchReplayCoroutine(string gameId, Action<string, string, List<ReplayAction>> onDone)
     {
         using var req = UnityWebRequest.Get($"{firebaseUrl}/games/{gameId}.json");
         yield return req.SendWebRequest();
         string mode    = "";
+        string result  = "";
         var    actions = new List<ReplayAction>();
         if (req.result == UnityWebRequest.Result.Success)
         {
             string json = req.downloadHandler.text;
             mode    = Str(json, "mode");
+            result  = Str(json, "result");
             actions = ParseReplayActions(json);
         }
-        onDone?.Invoke(mode, actions);
+        onDone?.Invoke(mode, result, actions);
     }
 
     // ─── JSON helpers ───
@@ -191,27 +201,54 @@ public class GameLogger : MonoBehaviour
         if (string.IsNullOrEmpty(gameJson) || gameJson.Trim() == "null") return list;
 
         int actIdx = gameJson.IndexOf("\"actions\""); if (actIdx < 0) return list;
-        int actStart = gameJson.IndexOf('{', actIdx); if (actStart < 0) return list;
-        int actEnd = ObjEnd(gameJson, actStart);
-        string actJson = gameJson.Substring(actStart, actEnd - actStart + 1);
+        int colonIdx = gameJson.IndexOf(':', actIdx + 8); if (colonIdx < 0) return list;
 
-        var raw = new SortedDictionary<int, string>();
-        int i = 0;
-        while (true)
+        // Skip whitespace after colon
+        int next = colonIdx + 1;
+        while (next < gameJson.Length && gameJson[next] == ' ') next++;
+        if (next >= gameJson.Length) return list;
+
+        var actionStrings = new List<string>();
+
+        if (gameJson[next] == '[')
         {
-            int ks = actJson.IndexOf('"', i); if (ks < 0) break;
-            int ke = actJson.IndexOf('"', ks + 1); if (ke < 0) break;
-            string key = actJson.Substring(ks + 1, ke - ks - 1);
-            int vs = actJson.IndexOf('{', ke); if (vs < 0) break;
-            int ve = ObjEnd(actJson, vs);
-            if (int.TryParse(key, out int idx))
-                raw[idx] = actJson.Substring(vs, ve - vs + 1);
-            i = ve + 1;
+            // Firebase returns array when keys are sequential integers (0, 1, 2, ...)
+            int arrEnd = ArrEnd(gameJson, next);
+            string arrJson = gameJson.Substring(next, arrEnd - next + 1);
+            int j = 0;
+            while (true)
+            {
+                int os = arrJson.IndexOf('{', j); if (os < 0) break;
+                int oe = ObjEnd(arrJson, os);
+                string val = arrJson.Substring(os, oe - os + 1);
+                if (val != "null") actionStrings.Add(val);
+                j = oe + 1;
+            }
+        }
+        else if (gameJson[next] == '{')
+        {
+            // Object format: { "0": {...}, "1": {...} }
+            int actEnd = ObjEnd(gameJson, next);
+            string actJson = gameJson.Substring(next, actEnd - next + 1);
+            var raw = new SortedDictionary<int, string>();
+            int j = 0;
+            while (true)
+            {
+                int ks = actJson.IndexOf('"', j); if (ks < 0) break;
+                int ke = actJson.IndexOf('"', ks + 1); if (ke < 0) break;
+                string key = actJson.Substring(ks + 1, ke - ks - 1);
+                int vs = actJson.IndexOf('{', ke); if (vs < 0) break;
+                int ve = ObjEnd(actJson, vs);
+                if (int.TryParse(key, out int idx))
+                    raw[idx] = actJson.Substring(vs, ve - vs + 1);
+                j = ve + 1;
+            }
+            foreach (var kvp in raw)
+                actionStrings.Add(kvp.Value);
         }
 
-        foreach (var kvp in raw)
+        foreach (string a in actionStrings)
         {
-            string a = kvp.Value;
             list.Add(new ReplayAction
             {
                 type      = Str(a, "type"),
@@ -237,6 +274,17 @@ public class GameLogger : MonoBehaviour
         {
             if (s[i] == '{') depth++;
             else if (s[i] == '}' && --depth == 0) return i;
+        }
+        return s.Length - 1;
+    }
+
+    private static int ArrEnd(string s, int start)
+    {
+        int depth = 0;
+        for (int i = start; i < s.Length; i++)
+        {
+            if (s[i] == '[') depth++;
+            else if (s[i] == ']' && --depth == 0) return i;
         }
         return s.Length - 1;
     }
@@ -284,6 +332,22 @@ public class GameLogger : MonoBehaviour
         req.downloadHandler = new DownloadHandlerBuffer();
         req.SetRequestHeader("Content-Type", "application/json");
         yield return req.SendWebRequest();
+    }
+
+    public void DeleteAllGames(Action<bool> onDone)
+        => StartCoroutine(DeleteAllGamesCoroutine(onDone));
+
+    private IEnumerator DeleteAllGamesCoroutine(Action<bool> onDone)
+    {
+        if (string.IsNullOrEmpty(firebaseUrl))
+        {
+            onDone?.Invoke(false);
+            yield break;
+        }
+        using var req = UnityWebRequest.Delete($"{firebaseUrl}/games.json");
+        req.downloadHandler = new DownloadHandlerBuffer();
+        yield return req.SendWebRequest();
+        onDone?.Invoke(req.result == UnityWebRequest.Result.Success);
     }
 
     private IEnumerator Patch(string url, string json)

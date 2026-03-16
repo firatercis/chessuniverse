@@ -51,6 +51,7 @@ public class UIManager : MonoBehaviour
     private TextMeshProUGUI adminPasswordError;
     private GameObject adminGameListPanel;
     private GameObject adminGameListContent;
+    private GameObject adminScrollView;
     private TextMeshProUGUI adminStatusText;
 
     // Replay controls
@@ -466,52 +467,65 @@ public class UIManager : MonoBehaviour
         panelRect.anchorMax = new Vector2(0.5f, 1f);
         panelRect.pivot = new Vector2(0.5f, 1f);
         panelRect.anchoredPosition = new Vector2(0, -85);
-        panelRect.sizeDelta = new Vector2(300, 56);
+        panelRect.sizeDelta = new Vector2(340, 56);
+
+        // "Plant:" label on the left
+        var labelObj = new GameObject("PlantLabel");
+        labelObj.transform.SetParent(seedButtonsPanel.transform, false);
+        var labelTmp = labelObj.AddComponent<TextMeshProUGUI>();
+        labelTmp.text = "Plant:";
+        labelTmp.fontSize = 16;
+        labelTmp.alignment = TextAlignmentOptions.MidlineRight;
+        labelTmp.color = new Color(0.85f, 0.85f, 0.85f);
+        var labelRt = labelTmp.rectTransform;
+        labelRt.anchorMin = new Vector2(0.5f, 0.5f);
+        labelRt.anchorMax = new Vector2(0.5f, 0.5f);
+        labelRt.sizeDelta = new Vector2(60, 46);
+        labelRt.anchoredPosition = new Vector2(-140, 0);
 
         // 5 compact piece-symbol buttons in a row
-        string[] letters = { "P", "N", "B", "R", "Q" };
         string[] turns   = { "1", "3", "3", "5", "9" };
         PieceType[] types = { PieceType.Pawn, PieceType.Knight, PieceType.Bishop, PieceType.Rook, PieceType.Queen };
+        Color lightGreen = new Color(0.5f, 0.9f, 0.3f);
 
         for (int i = 0; i < 5; i++)
         {
             PieceType t = types[i];
-            float xPos = -120 + i * 60;
+            float xPos = -80 + i * 55;
 
             GameObject btnObj = new GameObject($"Seed_{types[i]}");
             btnObj.transform.SetParent(seedButtonsPanel.transform, false);
 
             var btnImg = btnObj.AddComponent<Image>();
-            btnImg.color = new Color(0.7f, 0.6f, 0.15f);
+            btnImg.color = new Color(0.2f, 0.35f, 0.15f);
 
             var btnRect = btnImg.rectTransform;
             btnRect.anchorMin = new Vector2(0.5f, 0.5f);
             btnRect.anchorMax = new Vector2(0.5f, 0.5f);
-            btnRect.sizeDelta = new Vector2(52, 46);
+            btnRect.sizeDelta = new Vector2(48, 46);
             btnRect.anchoredPosition = new Vector2(xPos, 0);
 
             var button = btnObj.AddComponent<Button>();
             button.targetGraphic = btnImg;
             var colors = button.colors;
-            colors.highlightedColor = new Color(0.85f, 0.75f, 0.2f);
-            colors.pressedColor = new Color(0.5f, 0.4f, 0.1f);
+            colors.highlightedColor = new Color(0.3f, 0.5f, 0.2f);
+            colors.pressedColor = new Color(0.15f, 0.25f, 0.1f);
             button.colors = colors;
             button.onClick.AddListener(() => GameManager.Instance.OnSeedButtonClick(t));
 
-            // Piece letter (large, top area)
-            GameObject letterObj = new GameObject("Letter");
-            letterObj.transform.SetParent(btnObj.transform, false);
-            var letterTmp = letterObj.AddComponent<TextMeshProUGUI>();
-            letterTmp.text = letters[i];
-            letterTmp.fontSize = 24;
-            letterTmp.alignment = TextAlignmentOptions.Center;
-            letterTmp.color = Color.white;
-            letterTmp.fontStyle = FontStyles.Bold;
-            var letterRt = letterTmp.rectTransform;
-            letterRt.anchorMin = new Vector2(0, 0.28f);
-            letterRt.anchorMax = new Vector2(1, 1);
-            letterRt.offsetMin = Vector2.zero;
-            letterRt.offsetMax = Vector2.zero;
+            // Piece sprite icon (top area)
+            GameObject iconObj = new GameObject("Icon");
+            iconObj.transform.SetParent(btnObj.transform, false);
+            var iconImg = iconObj.AddComponent<Image>();
+            var pieceSprite = ChessPiece.GetPieceSprite(PieceColor.White, t);
+            if (pieceSprite != null) iconImg.sprite = pieceSprite;
+            iconImg.color = lightGreen;
+            iconImg.preserveAspect = true;
+            var iconRt = iconImg.rectTransform;
+            iconRt.anchorMin = new Vector2(0.15f, 0.30f);
+            iconRt.anchorMax = new Vector2(0.85f, 0.95f);
+            iconRt.offsetMin = Vector2.zero;
+            iconRt.offsetMax = Vector2.zero;
 
             // Growth turns (small, bottom area)
             GameObject turnObj = new GameObject("Turns");
@@ -520,7 +534,7 @@ public class UIManager : MonoBehaviour
             turnTmp.text = turns[i];
             turnTmp.fontSize = 13;
             turnTmp.alignment = TextAlignmentOptions.Center;
-            turnTmp.color = new Color(1f, 0.9f, 0.5f);
+            turnTmp.color = new Color(0.7f, 0.95f, 0.5f);
             var turnRt = turnTmp.rectTransform;
             turnRt.anchorMin = new Vector2(0, 0);
             turnRt.anchorMax = new Vector2(1, 0.32f);
@@ -1777,7 +1791,8 @@ public class UIManager : MonoBehaviour
         loadRect.offsetMax = Vector2.zero;
 
         // ScrollRect
-        GameObject scrollObj = new GameObject("GameScrollView");
+        adminScrollView = new GameObject("GameScrollView");
+        var scrollObj = adminScrollView;
         scrollObj.transform.SetParent(adminGameListPanel.transform, false);
         var scrollImg = scrollObj.AddComponent<Image>();
         scrollImg.color = new Color(0.05f, 0.05f, 0.08f);
@@ -1791,8 +1806,7 @@ public class UIManager : MonoBehaviour
         // Viewport
         GameObject vpObj = new GameObject("Viewport");
         vpObj.transform.SetParent(scrollObj.transform, false);
-        vpObj.AddComponent<Image>().color = Color.clear;
-        vpObj.AddComponent<Mask>().showMaskGraphic = false;
+        vpObj.AddComponent<RectMask2D>();
         var vpRect = vpObj.GetComponent<RectTransform>();
         vpRect.anchorMin = Vector2.zero;
         vpRect.anchorMax = Vector2.one;
@@ -1824,13 +1838,28 @@ public class UIManager : MonoBehaviour
         scrollRect.horizontal = false;
         scrollRect.scrollSensitivity = 25;
 
-        // Close button (anchored to bottom center)
+        // Close button (anchored to bottom left of center)
         var closeBtn = CreateButton(adminGameListPanel, "AdminCloseBtn", "Close", Vector2.zero,
-            () => adminGameListPanel.SetActive(false), 180);
+            () => adminGameListPanel.SetActive(false), 150);
         var closeBtnRt = closeBtn.GetComponent<RectTransform>();
         closeBtnRt.anchorMin = new Vector2(0.5f, 0f);
         closeBtnRt.anchorMax = new Vector2(0.5f, 0f);
-        closeBtnRt.anchoredPosition = new Vector2(0, 32);
+        closeBtnRt.anchoredPosition = new Vector2(-85, 32);
+
+        // Delete All button (red, bottom right of center)
+        var deleteBtn = CreateButton(adminGameListPanel, "AdminDeleteAllBtn", "Delete All", Vector2.zero,
+            () => OnDeleteAllGamesClicked(), 150);
+        var deleteBtnRt = deleteBtn.GetComponent<RectTransform>();
+        deleteBtnRt.anchorMin = new Vector2(0.5f, 0f);
+        deleteBtnRt.anchorMax = new Vector2(0.5f, 0f);
+        deleteBtnRt.anchoredPosition = new Vector2(85, 32);
+        var deleteBtnImg = deleteBtn.GetComponent<Image>();
+        deleteBtnImg.color = new Color(0.7f, 0.2f, 0.2f);
+        var deleteBtnButton = deleteBtn.GetComponent<Button>();
+        var dc = deleteBtnButton.colors;
+        dc.highlightedColor = new Color(0.85f, 0.3f, 0.3f);
+        dc.pressedColor = new Color(0.5f, 0.15f, 0.15f);
+        deleteBtnButton.colors = dc;
 
         adminGameListPanel.SetActive(false);
     }
@@ -1843,8 +1872,16 @@ public class UIManager : MonoBehaviour
         adminStatusText.text = "Loading...";
         adminStatusText.color = new Color(0.6f, 0.6f, 0.6f);
         adminStatusText.gameObject.SetActive(true);
+        adminScrollView.SetActive(false);
 
-        GameLogger.Instance?.FetchRecentGames((games, fetchError) =>
+        if (GameLogger.Instance == null)
+        {
+            adminStatusText.text = "GameLogger not available.";
+            adminStatusText.color = new Color(1f, 0.45f, 0.45f);
+            return;
+        }
+
+        GameLogger.Instance.FetchRecentGames((games, fetchError) =>
         {
             if (!adminGameListPanel.activeSelf) return;
             foreach (Transform child in adminGameListContent.transform)
@@ -1855,6 +1892,7 @@ public class UIManager : MonoBehaviour
                 adminStatusText.text = fetchError;
                 adminStatusText.color = new Color(1f, 0.45f, 0.45f);
                 adminStatusText.gameObject.SetActive(true);
+                adminScrollView.SetActive(false);
                 return;
             }
 
@@ -1863,10 +1901,12 @@ public class UIManager : MonoBehaviour
                 adminStatusText.text = "No games recorded yet.";
                 adminStatusText.color = new Color(0.6f, 0.6f, 0.6f);
                 adminStatusText.gameObject.SetActive(true);
+                adminScrollView.SetActive(false);
                 return;
             }
 
             adminStatusText.gameObject.SetActive(false);
+            adminScrollView.SetActive(true);
 
             // Table header
             CreateGameTableRow(adminGameListContent.transform,
@@ -1895,6 +1935,31 @@ public class UIManager : MonoBehaviour
         });
     }
 
+    private void OnDeleteAllGamesClicked()
+    {
+        ShowInfoPanel("Delete ALL games?\nThis cannot be undone.", () =>
+        {
+            if (GameLogger.Instance == null) return;
+            adminStatusText.text = "Deleting...";
+            adminStatusText.color = new Color(0.6f, 0.6f, 0.6f);
+            adminStatusText.gameObject.SetActive(true);
+            adminScrollView.SetActive(false);
+            foreach (Transform child in adminGameListContent.transform)
+                Destroy(child.gameObject);
+
+            GameLogger.Instance.DeleteAllGames((success) =>
+            {
+                if (success)
+                    ShowAdminGameList();
+                else
+                {
+                    adminStatusText.text = "Failed to delete games.";
+                    adminStatusText.color = new Color(1f, 0.45f, 0.45f);
+                }
+            });
+        });
+    }
+
     // ─── Admin Table Helpers ───
 
     private void CreateGameTableRow(Transform parent,
@@ -1916,7 +1981,7 @@ public class UIManager : MonoBehaviour
         AddTableCell(rowObj.transform, mode,   0.02f, 0.17f, TextAlignmentOptions.MidlineLeft,   fs).color = textColor;
         AddTableCell(rowObj.transform, player, 0.17f, 0.37f, TextAlignmentOptions.MidlineLeft,   fs).color = textColor;
         AddTableCell(rowObj.transform, result, 0.37f, 0.60f, TextAlignmentOptions.MidlineLeft,   fs).color = textColor;
-        AddTableCell(rowObj.transform, time,   0.60f, 0.78f, TextAlignmentOptions.MidlineCenter, fs).color = textColor;
+        AddTableCell(rowObj.transform, time,   0.60f, 0.78f, TextAlignmentOptions.Midline, fs).color = textColor;
 
         if (!isHeader && gameId != null)
         {
@@ -1978,7 +2043,7 @@ public class UIManager : MonoBehaviour
     private void OnWatchGameClicked(string gameId, string mode)
     {
         adminGameListPanel.SetActive(false);
-        GameLogger.Instance?.FetchGameReplay(gameId, (fetchedMode, actions) =>
+        GameLogger.Instance?.FetchGameReplay(gameId, (fetchedMode, result, actions) =>
         {
             if (actions.Count == 0)
             {
@@ -1987,7 +2052,7 @@ public class UIManager : MonoBehaviour
                 return;
             }
             string replayMode = string.IsNullOrEmpty(fetchedMode) ? mode : fetchedMode;
-            GameManager.Instance.StartReplay(actions, replayMode);
+            GameManager.Instance.StartReplay(actions, replayMode, result);
         });
     }
 

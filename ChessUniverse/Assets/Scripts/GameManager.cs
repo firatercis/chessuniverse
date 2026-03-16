@@ -41,6 +41,7 @@ public class GameManager : MonoBehaviour
     private bool isReplayMode;
     private List<ReplayAction> replayActions;
     private int replayIndex;
+    private string replayResult;
 
     private void Awake()
     {
@@ -408,6 +409,8 @@ public class GameManager : MonoBehaviour
         // Use bluffy move to hide captured piece instead of destroying
         ChessPiece captured = ChessBoard.Instance.MovePieceBluffy(piece, target.x, target.y);
 
+        GameLogger.Instance?.LogMove(from.x, from.y, target.x, target.y, piece.type);
+
         // Unregister captured piece from BluffyManager (but keep the object for undo)
         if (captured != null)
             BluffyManager.Instance.UnregisterPiece(captured);
@@ -739,11 +742,12 @@ public class GameManager : MonoBehaviour
 
     // ─── Replay Mode ───
 
-    public void StartReplay(List<ReplayAction> actions, string modeStr)
+    public void StartReplay(List<ReplayAction> actions, string modeStr, string result = null)
     {
         isReplayMode  = true;
         replayActions = actions;
         replayIndex   = 0;
+        replayResult  = result ?? "";
 
         GameMode mode = GameMode.Classic;
         System.Enum.TryParse(modeStr, out mode);
@@ -766,11 +770,9 @@ public class GameManager : MonoBehaviour
         ChessBoard.Instance.SetFlipped(false);
         ChessBoard.Instance.ClearAllPieces();
 
-        // Initial board: always Classic piece layout
-        var savedMode = GameBootstrap.CurrentMode;
-        GameBootstrap.CurrentMode = GameMode.Classic;
-        ChessBoard.Instance.SetupPieces();
-        GameBootstrap.CurrentMode = savedMode;
+        // Set up initial board based on mode
+        // Bluffy: force Classic to avoid triggering setup phase UI
+        SetupBoardForReplay();
 
         UIManager.Instance.ShowReplayControls(replayIndex, replayActions.Count);
     }
@@ -781,6 +783,22 @@ public class GameManager : MonoBehaviour
         ApplyReplayAction(replayActions[replayIndex]);
         replayIndex++;
         UIManager.Instance.UpdateReplayProgress(replayIndex, replayActions.Count);
+
+        // Show game result when replay reaches the end
+        if (replayIndex >= replayActions.Count && !string.IsNullOrEmpty(replayResult) && replayResult != "ongoing")
+        {
+            string resultText;
+            if (replayResult == "stalemate")
+                resultText = "Stalemate!\nDraw!";
+            else if (replayResult.Contains("white"))
+                resultText = "White Wins!";
+            else if (replayResult.Contains("black"))
+                resultText = "Black Wins!";
+            else
+                resultText = replayResult;
+
+            UIManager.Instance.ShowSplashText(resultText, 2.5f, null, new Color(0.9f, 0.8f, 0.2f));
+        }
     }
 
     public void ReplayStepBackward()
@@ -798,6 +816,7 @@ public class GameManager : MonoBehaviour
         isReplayMode  = false;
         replayActions = null;
         replayIndex   = 0;
+        replayResult  = "";
         UIManager.Instance.HideReplayControls();
         RestartGame();
     }
@@ -808,10 +827,24 @@ public class GameManager : MonoBehaviour
         enPassantTarget = null;
         SeedManager.Instance.ClearAll();
         ChessBoard.Instance.ClearAllPieces();
-        var savedMode = GameBootstrap.CurrentMode;
-        GameBootstrap.CurrentMode = GameMode.Classic;
-        ChessBoard.Instance.SetupPieces();
-        GameBootstrap.CurrentMode = savedMode;
+        SetupBoardForReplay();
+    }
+
+    private void SetupBoardForReplay()
+    {
+        // Bluffy: force Classic to avoid triggering StartSetupPhase UI
+        if (GameBootstrap.CurrentMode == GameMode.BluffyChess)
+        {
+            var saved = GameBootstrap.CurrentMode;
+            GameBootstrap.CurrentMode = GameMode.Classic;
+            ChessBoard.Instance.SetupPieces();
+            GameBootstrap.CurrentMode = saved;
+        }
+        else
+        {
+            // SeedChess → 2 kings only, Classic → full 32 pieces
+            ChessBoard.Instance.SetupPieces();
+        }
     }
 
     private void ApplyReplayAction(ReplayAction action)
@@ -824,6 +857,8 @@ public class GameManager : MonoBehaviour
             case "seedPlant":
                 if (System.Enum.TryParse(action.seedType, out PieceType seedT))
                     SeedManager.Instance.PlantSeed(action.fx, action.fy, currentTurn, seedT);
+                if (GameBootstrap.CurrentMode == GameMode.SeedChess)
+                    SeedManager.Instance.OnTurnEnd(currentTurn);
                 currentTurn = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
                 break;
             case "sacrifice":
@@ -855,6 +890,34 @@ public class GameManager : MonoBehaviour
                 }
                 break;
             }
+            case "bluffAccept":
+                if (isReplayMode)
+                    UIManager.Instance.ShowSplashText("Accepted", 0.6f, null, new Color(0.5f, 0.8f, 0.5f));
+                currentTurn = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
+                break;
+            case "bluffCall":
+                if (isReplayMode)
+                    UIManager.Instance.ShowSplashText("BLUFF !!", 0.6f);
+                break;
+            case "bluffCaught":
+            {
+                if (isReplayMode)
+                    UIManager.Instance.ShowSplashText("Caught Bluffing!", 0.6f, null, new Color(1f, 0.3f, 0.1f));
+                // Undo the move: destroy piece at target (the bluffer)
+                ChessPiece atTarget = ChessBoard.Instance.board[action.tx, action.ty];
+                if (atTarget != null)
+                {
+                    ChessBoard.Instance.board[action.tx, action.ty] = null;
+                    Object.Destroy(atTarget.gameObject);
+                }
+                // Turn stays with the same player (mover gets another chance)
+                break;
+            }
+            case "rearrangeDone":
+                if (isReplayMode)
+                    UIManager.Instance.ShowSplashText("Not a Bluff!", 0.6f, null, new Color(0.2f, 0.9f, 0.3f));
+                currentTurn = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
+                break;
         }
     }
 
@@ -862,6 +925,8 @@ public class GameManager : MonoBehaviour
     {
         ChessPiece piece = ChessBoard.Instance.board[action.fx, action.fy];
         if (piece == null) return;
+
+        bool isBigPiece = piece.type != PieceType.Pawn;
 
         // Handle castling (king moves 2 squares horizontally)
         if (piece.type == PieceType.King && Mathf.Abs(action.tx - action.fx) == 2)
@@ -884,6 +949,16 @@ public class GameManager : MonoBehaviour
             ChessBoard.Instance.RemovePiece(action.tx, action.ty);
             ChessBoard.Instance.CreatePiece(promoType, pcolor, action.tx, action.ty);
         }
+
+        // In Bluffy mode, big piece moves don't switch turns
+        // (bluffAccept or rearrangeDone handles turn switching)
+        bool isBluffy = GameBootstrap.CurrentMode == GameMode.BluffyChess;
+        if (isBluffy && isBigPiece)
+            return;
+
+        // Process seeds before switching turns (same as EndTurn)
+        if (GameBootstrap.CurrentMode == GameMode.SeedChess)
+            SeedManager.Instance.OnTurnEnd(currentTurn);
 
         currentTurn = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
     }
