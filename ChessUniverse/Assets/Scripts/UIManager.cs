@@ -64,6 +64,20 @@ public class UIManager : MonoBehaviour
     private TextMeshProUGUI splashText;
     private CanvasGroup splashCanvasGroup;
 
+    // Currency display
+    private GameObject currencyPanel;
+    private TextMeshProUGUI currencyText;
+
+    // Tutorial
+    private GameObject tutorialOverlay;
+    private GameObject tutorialMsgPanel;
+    private TextMeshProUGUI tutorialMsgText;
+    private GameObject tutorialOkBtn;
+    private GameObject tutorialSkipBtn;
+    private int savedSeedBtnSiblingIndex;
+    private GameObject fingerObj;
+    private Coroutine fingerPulseCoroutine;
+
     // Online panels
     private GameObject lobbyPanel;
     private GameObject hostWaitPanel;
@@ -114,6 +128,9 @@ public class UIManager : MonoBehaviour
         // Turn indicator
         CreateTurnIndicator(canvasObj);
 
+        // Currency display
+        CreateCurrencyDisplay(canvasObj);
+
         // Game over panel
         CreateGameOverPanel(canvasObj);
 
@@ -148,6 +165,9 @@ public class UIManager : MonoBehaviour
         CreateRearrangePanel(canvasObj);
         CreateInfoPanel(canvasObj);
         CreateRulesPanel(canvasObj);
+
+        // Tutorial overlay
+        CreateTutorialPanel(canvasObj);
 
         // Profile + Admin + Replay (on top of everything)
         CreateProfilePanel(canvasObj);
@@ -186,6 +206,298 @@ public class UIManager : MonoBehaviour
         bgRect.anchorMax = Vector2.one;
         bgRect.sizeDelta = new Vector2(40, 20);
         bgRect.anchoredPosition = Vector2.zero;
+    }
+
+    private void CreateCurrencyDisplay(GameObject parent)
+    {
+        currencyPanel = new GameObject("CurrencyPanel");
+        currencyPanel.transform.SetParent(parent.transform, false);
+
+        // Dark background pill
+        var panelImg = currencyPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.12f, 0.10f, 0.08f, 0.9f);
+
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = new Vector2(1f, 1f);
+        panelRect.anchorMax = new Vector2(1f, 1f);
+        panelRect.pivot = new Vector2(1f, 1f);
+        panelRect.anchoredPosition = new Vector2(-20, -90);
+        panelRect.sizeDelta = new Vector2(160, 50);
+
+        // Golden pawn icon
+        GameObject iconObj = new GameObject("GoldenPawnIcon");
+        iconObj.transform.SetParent(currencyPanel.transform, false);
+        var iconImg = iconObj.AddComponent<Image>();
+        var goldenPawnTex = Resources.Load<Texture2D>("UI/goldenPawn");
+        if (goldenPawnTex != null)
+        {
+            iconImg.sprite = Sprite.Create(goldenPawnTex,
+                new Rect(0, 0, goldenPawnTex.width, goldenPawnTex.height),
+                new Vector2(0.5f, 0.5f));
+        }
+        iconImg.preserveAspect = true;
+        var iconRt = iconImg.rectTransform;
+        iconRt.anchorMin = new Vector2(0f, 0.5f);
+        iconRt.anchorMax = new Vector2(0f, 0.5f);
+        iconRt.pivot = new Vector2(0f, 0.5f);
+        iconRt.anchoredPosition = new Vector2(6, 0);
+        iconRt.sizeDelta = new Vector2(40, 40);
+
+        // Amount text
+        GameObject textObj = new GameObject("CurrencyAmount");
+        textObj.transform.SetParent(currencyPanel.transform, false);
+        currencyText = textObj.AddComponent<TextMeshProUGUI>();
+        currencyText.text = GetGold().ToString();
+        currencyText.fontSize = 26;
+        currencyText.alignment = TextAlignmentOptions.MidlineLeft;
+        currencyText.color = new Color(1f, 0.85f, 0.25f);
+        currencyText.fontStyle = FontStyles.Bold;
+        var textRt = currencyText.rectTransform;
+        textRt.anchorMin = new Vector2(0f, 0f);
+        textRt.anchorMax = new Vector2(1f, 1f);
+        textRt.offsetMin = new Vector2(50, 0);
+        textRt.offsetMax = new Vector2(-8, 0);
+
+        currencyPanel.SetActive(false);
+    }
+
+    // ─── Tutorial ───
+
+    private void CreateTutorialPanel(GameObject parent)
+    {
+        // Full-screen dark overlay (blocks clicks)
+        tutorialOverlay = new GameObject("TutorialOverlay");
+        tutorialOverlay.transform.SetParent(parent.transform, false);
+        var overlayImg = tutorialOverlay.AddComponent<Image>();
+        overlayImg.color = new Color(0, 0, 0, 0.7f);
+        overlayImg.raycastTarget = true;
+        var overlayRect = overlayImg.rectTransform;
+        overlayRect.anchorMin = Vector2.zero;
+        overlayRect.anchorMax = Vector2.one;
+        overlayRect.offsetMin = Vector2.zero;
+        overlayRect.offsetMax = Vector2.zero;
+
+        // Message panel (centered on overlay)
+        tutorialMsgPanel = new GameObject("TutorialMsgPanel");
+        tutorialMsgPanel.transform.SetParent(tutorialOverlay.transform, false);
+        var msgImg = tutorialMsgPanel.AddComponent<Image>();
+        msgImg.color = new Color(0.14f, 0.12f, 0.10f, 0.95f);
+        var msgRect = msgImg.rectTransform;
+        msgRect.anchorMin = new Vector2(0.5f, 0.5f);
+        msgRect.anchorMax = new Vector2(0.5f, 0.5f);
+        msgRect.sizeDelta = new Vector2(620, 220);
+
+        // Message text
+        var textObj = new GameObject("TutorialMsgText");
+        textObj.transform.SetParent(tutorialMsgPanel.transform, false);
+        tutorialMsgText = textObj.AddComponent<TextMeshProUGUI>();
+        tutorialMsgText.fontSize = 26;
+        tutorialMsgText.alignment = TextAlignmentOptions.Center;
+        tutorialMsgText.color = Color.white;
+        var textRect = tutorialMsgText.rectTransform;
+        textRect.anchorMin = new Vector2(0, 0.35f);
+        textRect.anchorMax = new Vector2(1, 1);
+        textRect.offsetMin = new Vector2(20, 0);
+        textRect.offsetMax = new Vector2(-20, -15);
+
+        // OK button
+        tutorialOkBtn = CreateButton(tutorialMsgPanel, "TutorialOkBtn", "OK", new Vector2(0, -75),
+            () => GameManager.Instance.AdvanceTutorial(), 160);
+
+        // Skip Tutorial button (child of canvas, always on top)
+        tutorialSkipBtn = CreateButton(parent, "SkipTutorialBtn", "Skip Tutorial", Vector2.zero,
+            () => GameManager.Instance.SkipTutorial(), 200);
+        var skipRect = tutorialSkipBtn.GetComponent<RectTransform>();
+        skipRect.anchorMin = new Vector2(1f, 0f);
+        skipRect.anchorMax = new Vector2(1f, 0f);
+        skipRect.pivot = new Vector2(1f, 0f);
+        skipRect.anchoredPosition = new Vector2(-20, 20);
+        var skipImg = tutorialSkipBtn.GetComponent<Image>();
+        if (skipImg != null)
+        {
+            skipImg.color = new Color(0.4f, 0.35f, 0.3f);
+            var skipColors = tutorialSkipBtn.GetComponent<Button>().colors;
+            skipColors.highlightedColor = new Color(0.5f, 0.45f, 0.4f);
+            tutorialSkipBtn.GetComponent<Button>().colors = skipColors;
+        }
+
+        tutorialOverlay.SetActive(false);
+        tutorialSkipBtn.SetActive(false);
+
+        // Finger pointer (child of canvas, always on top)
+        fingerObj = new GameObject("FingerPointer");
+        fingerObj.transform.SetParent(parent.transform, false);
+        var fingerImgComp = fingerObj.AddComponent<Image>();
+        var fingerTex = Resources.Load<Texture2D>("UI/finger");
+        if (fingerTex != null)
+            fingerImgComp.sprite = Sprite.Create(fingerTex,
+                new Rect(0, 0, fingerTex.width, fingerTex.height),
+                new Vector2(0.5f, 0.5f));
+        fingerImgComp.preserveAspect = true;
+        fingerImgComp.raycastTarget = false;
+        fingerObj.GetComponent<RectTransform>().sizeDelta = new Vector2(70, 70);
+        fingerObj.SetActive(false);
+    }
+
+    public void ShowTutorialMessage(string message, string buttonText = "OK")
+    {
+        tutorialMsgText.text = message;
+        tutorialOkBtn.GetComponentInChildren<TextMeshProUGUI>().text = buttonText;
+        tutorialMsgPanel.SetActive(true);
+        tutorialOkBtn.SetActive(true);
+        tutorialOverlay.SetActive(true);
+        tutorialSkipBtn.SetActive(true);
+    }
+
+    public void ShowTutorialOverlayOnly()
+    {
+        tutorialMsgPanel.SetActive(false);
+        tutorialOverlay.SetActive(true);
+        tutorialSkipBtn.SetActive(true);
+    }
+
+    public void HideTutorialOverlay()
+    {
+        tutorialOverlay.SetActive(false);
+    }
+
+    public void HideTutorialAll()
+    {
+        tutorialOverlay.SetActive(false);
+        tutorialSkipBtn.SetActive(false);
+        HideFinger();
+        UnfocusSeedButtons();
+        SetSeedButtonsInteractable(null);
+    }
+
+    private void ShowFingerOnUI(Transform target, float yOffset = -50f)
+    {
+        fingerObj.SetActive(true);
+        float s = canvas.transform.localScale.x;
+        fingerObj.transform.position = target.position + new Vector3(0, yOffset * s, 0);
+        fingerObj.transform.SetAsLastSibling();
+        StartFingerPulse();
+    }
+
+    public void ShowFingerOnPawnButton()
+    {
+        Transform btn = seedButtonsPanel.transform.Find("Seed_Pawn");
+        if (btn != null)
+            ShowFingerOnUI(btn);
+    }
+
+    public void ShowFingerOnBoardSquare(int x, int y)
+    {
+        fingerObj.SetActive(true);
+        Vector3 worldPos = ChessBoard.Instance.VisualPos(x, y);
+        Vector3 screenPos = Camera.main.WorldToScreenPoint(worldPos);
+        float s = canvas.transform.localScale.x;
+        fingerObj.transform.position = screenPos + new Vector3(0, -50 * s, 0);
+        fingerObj.transform.SetAsLastSibling();
+        StartFingerPulse();
+    }
+
+    public void ShowFingerOnBluffyConfirm()
+    {
+        Transform btn = setupPanel.transform.Find("ConfirmSetupBtn");
+        if (btn != null)
+            ShowFingerOnUI(btn);
+    }
+
+    public void HideFinger()
+    {
+        fingerObj.SetActive(false);
+        if (fingerPulseCoroutine != null)
+        {
+            StopCoroutine(fingerPulseCoroutine);
+            fingerPulseCoroutine = null;
+        }
+    }
+
+    private void StartFingerPulse()
+    {
+        if (fingerPulseCoroutine != null)
+            StopCoroutine(fingerPulseCoroutine);
+        fingerPulseCoroutine = StartCoroutine(FingerPulseCoroutine());
+    }
+
+    private System.Collections.IEnumerator FingerPulseCoroutine()
+    {
+        var img = fingerObj.GetComponent<Image>();
+        while (true)
+        {
+            float t = 0;
+            while (t < 0.5f)
+            {
+                t += Time.deltaTime;
+                img.color = new Color(1, 1, 1, Mathf.Lerp(1f, 0.25f, t / 0.5f));
+                yield return null;
+            }
+            t = 0;
+            while (t < 0.5f)
+            {
+                t += Time.deltaTime;
+                img.color = new Color(1, 1, 1, Mathf.Lerp(0.25f, 1f, t / 0.5f));
+                yield return null;
+            }
+        }
+    }
+
+    public void FocusSeedButtons()
+    {
+        savedSeedBtnSiblingIndex = seedButtonsPanel.transform.GetSiblingIndex();
+        seedButtonsPanel.transform.SetSiblingIndex(tutorialOverlay.transform.GetSiblingIndex() + 1);
+    }
+
+    public void UnfocusSeedButtons()
+    {
+        if (savedSeedBtnSiblingIndex > 0)
+            seedButtonsPanel.transform.SetSiblingIndex(savedSeedBtnSiblingIndex);
+    }
+
+    public void SetSeedButtonsInteractable(PieceType? onlyType)
+    {
+        foreach (Transform child in seedButtonsPanel.transform)
+        {
+            var btn = child.GetComponent<Button>();
+            if (btn == null) continue;
+            btn.interactable = onlyType == null || child.name == $"Seed_{onlyType.Value}";
+        }
+    }
+
+    // ─── Currency ───
+
+    public static int GetGold()
+    {
+        return PlayerPrefs.GetInt("GoldenPawns", 100);
+    }
+
+    public static void AddGold(int amount)
+    {
+        int current = GetGold();
+        PlayerPrefs.SetInt("GoldenPawns", current + amount);
+        PlayerPrefs.Save();
+        if (Instance != null && Instance.currencyText != null)
+            Instance.currencyText.text = GetGold().ToString();
+    }
+
+    public static void SetGold(int amount)
+    {
+        PlayerPrefs.SetInt("GoldenPawns", amount);
+        PlayerPrefs.Save();
+        if (Instance != null && Instance.currencyText != null)
+            Instance.currencyText.text = GetGold().ToString();
+    }
+
+    public void ShowCurrencyDisplay()
+    {
+        currencyText.text = GetGold().ToString();
+        currencyPanel.SetActive(true);
+    }
+
+    public void HideCurrencyDisplay()
+    {
+        currencyPanel.SetActive(false);
     }
 
     private void CreateGameOverPanel(GameObject parent)
@@ -288,96 +600,392 @@ public class UIManager : MonoBehaviour
         }
     }
 
+    private Sprite LoadIconSprite(string resourcePath)
+    {
+        var tex = Resources.Load<Texture2D>(resourcePath);
+        if (tex == null) return null;
+        return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+    }
+
     private void CreateMainMenuPanel(GameObject parent)
     {
         mainMenuPanel = new GameObject("MainMenuPanel");
         mainMenuPanel.transform.SetParent(parent.transform, false);
 
         var panelImg = mainMenuPanel.AddComponent<Image>();
-        panelImg.color = new Color(0.12f, 0.12f, 0.16f, 0.95f);
+        panelImg.color = new Color(0.09f, 0.09f, 0.12f, 1f);
         var panelRect = panelImg.rectTransform;
         panelRect.anchorMin = Vector2.zero;
         panelRect.anchorMax = Vector2.one;
         panelRect.offsetMin = Vector2.zero;
         panelRect.offsetMax = Vector2.zero;
 
-        // Title
-        GameObject titleObj = new GameObject("MenuTitle");
+        // ─── Header ───
+        var titleObj = new GameObject("MenuTitle");
         titleObj.transform.SetParent(mainMenuPanel.transform, false);
-        var titleText = titleObj.AddComponent<TextMeshProUGUI>();
-        titleText.text = "Chess Universe";
-        titleText.fontSize = 56;
-        titleText.alignment = TextAlignmentOptions.Center;
-        titleText.color = Color.white;
-        titleText.fontStyle = FontStyles.Bold;
-        var titleRect = titleText.rectTransform;
-        titleRect.anchorMin = new Vector2(0.5f, 0.5f);
-        titleRect.anchorMax = new Vector2(0.5f, 0.5f);
-        titleRect.sizeDelta = new Vector2(600, 80);
-        titleRect.anchoredPosition = new Vector2(0, 120);
+        var titleTmp = titleObj.AddComponent<TextMeshProUGUI>();
+        titleTmp.text = "CHESS MODES";
+        titleTmp.fontSize = 38;
+        titleTmp.alignment = TextAlignmentOptions.Center;
+        titleTmp.color = Color.white;
+        titleTmp.fontStyle = FontStyles.Bold;
+        titleTmp.characterSpacing = 5;
+        var titleRt = titleTmp.rectTransform;
+        titleRt.anchorMin = new Vector2(0, 1);
+        titleRt.anchorMax = new Vector2(1, 1);
+        titleRt.pivot = new Vector2(0.5f, 1);
+        titleRt.anchoredPosition = new Vector2(0, -25);
+        titleRt.sizeDelta = new Vector2(0, 45);
 
-        // Player name subtitle
-        GameObject nameSubObj = new GameObject("PlayerNameSub");
-        nameSubObj.transform.SetParent(mainMenuPanel.transform, false);
-        var nameSub = nameSubObj.AddComponent<TextMeshProUGUI>();
-        nameSub.fontSize = 22;
-        nameSub.alignment = TextAlignmentOptions.Center;
-        nameSub.color = new Color(0.6f, 0.75f, 0.6f);
-        var nameSubRect = nameSub.rectTransform;
-        nameSubRect.anchorMin = new Vector2(0.5f, 0.5f);
-        nameSubRect.anchorMax = new Vector2(0.5f, 0.5f);
-        nameSubRect.sizeDelta = new Vector2(500, 30);
-        nameSubRect.anchoredPosition = new Vector2(0, 78);
-        // Name is populated dynamically in ShowMainMenu via UpdatePlayerNameDisplay
-        nameSub.text = $"Playing as: {PlayerPrefs.GetString("PlayerName", "")}";
+        var subObj = new GameObject("MenuSubtitle");
+        subObj.transform.SetParent(mainMenuPanel.transform, false);
+        var subTmp = subObj.AddComponent<TextMeshProUGUI>();
+        subTmp.text = "Choose a mode and start playing";
+        subTmp.fontSize = 18;
+        subTmp.alignment = TextAlignmentOptions.Center;
+        subTmp.color = new Color(0.55f, 0.55f, 0.6f);
+        var subRt = subTmp.rectTransform;
+        subRt.anchorMin = new Vector2(0, 1);
+        subRt.anchorMax = new Vector2(1, 1);
+        subRt.pivot = new Vector2(0.5f, 1);
+        subRt.anchoredPosition = new Vector2(0, -72);
+        subRt.sizeDelta = new Vector2(0, 25);
 
-        // Classic Chess button
-        CreateButton(mainMenuPanel, "ClassicBtn", "Classic Chess", new Vector2(0, 20),
-            () => { HideMainMenu(); ShowPlayerModePanel(GameMode.Classic); }, 300);
+        // Player name (top-right, clickable to change)
+        var nameObj = new GameObject("PlayerNameSub");
+        nameObj.transform.SetParent(mainMenuPanel.transform, false);
+        var nameTmp = nameObj.AddComponent<TextMeshProUGUI>();
+        nameTmp.fontSize = 16;
+        nameTmp.alignment = TextAlignmentOptions.MidlineRight;
+        nameTmp.color = new Color(0.5f, 0.65f, 0.5f);
+        nameTmp.text = $"Playing as: {PlayerPrefs.GetString("PlayerName", "")}";
+        var nameRt = nameTmp.rectTransform;
+        nameRt.anchorMin = new Vector2(1, 1);
+        nameRt.anchorMax = new Vector2(1, 1);
+        nameRt.pivot = new Vector2(1, 1);
+        nameRt.anchoredPosition = new Vector2(-15, -8);
+        nameRt.sizeDelta = new Vector2(280, 22);
+        var nameBtn = nameObj.AddComponent<Button>();
+        nameBtn.transition = Selectable.Transition.None;
+        nameBtn.onClick.AddListener(() => ShowProfilePanel());
 
-        // Seed Chess button + info
-        CreateButton(mainMenuPanel, "SeedBtn", "Seed Chess", new Vector2(0, -50),
-            () => { HideMainMenu(); ShowPlayerModePanel(GameMode.SeedChess); }, 300);
-        CreateInfoIcon(mainMenuPanel, new Vector2(180, -50), () => ShowRulesDialog(GameMode.SeedChess));
+        // ─── ScrollView for Cards ───
+        var scrollObj = new GameObject("CardScrollView");
+        scrollObj.transform.SetParent(mainMenuPanel.transform, false);
+        var scrollComp = scrollObj.AddComponent<ScrollRect>();
+        var scrollRt = scrollObj.GetComponent<RectTransform>();
+        scrollRt.anchorMin = Vector2.zero;
+        scrollRt.anchorMax = Vector2.one;
+        scrollRt.offsetMin = new Vector2(0, 70);
+        scrollRt.offsetMax = new Vector2(0, -100);
+        scrollComp.horizontal = false;
+        scrollComp.vertical = true;
+        scrollComp.scrollSensitivity = 40;
+        scrollComp.movementType = ScrollRect.MovementType.Elastic;
 
-        // Bluffy Chess button + info
-        CreateButton(mainMenuPanel, "BluffyBtn", "Bluffy Chess", new Vector2(0, -120),
-            () => { HideMainMenu(); ShowPlayerModePanel(GameMode.BluffyChess); }, 300);
-        CreateInfoIcon(mainMenuPanel, new Vector2(180, -120), () => ShowRulesDialog(GameMode.BluffyChess));
+        var vpObj = new GameObject("Viewport");
+        vpObj.transform.SetParent(scrollObj.transform, false);
+        vpObj.AddComponent<RectMask2D>();
+        var vpRt = vpObj.GetComponent<RectTransform>();
+        vpRt.anchorMin = Vector2.zero;
+        vpRt.anchorMax = Vector2.one;
+        vpRt.offsetMin = Vector2.zero;
+        vpRt.offsetMax = Vector2.zero;
+        scrollComp.viewport = vpRt;
 
-        // Change name button (small, bottom-right area)
-        var changeBtn = CreateButton(mainMenuPanel, "ChangeNameBtn", "Change Name", new Vector2(0, -200),
-            () => { HideMainMenu(); ShowProfilePanel(); }, 180);
-        changeBtn.GetComponent<Image>().color = new Color(0.25f, 0.25f, 0.35f);
+        var contentObj = new GameObject("Content");
+        contentObj.transform.SetParent(vpObj.transform, false);
+        var contentRt = contentObj.AddComponent<RectTransform>();
+        contentRt.anchorMin = new Vector2(0, 1);
+        contentRt.anchorMax = new Vector2(1, 1);
+        contentRt.pivot = new Vector2(0.5f, 1);
+        contentRt.anchoredPosition = Vector2.zero;
 
-        // Admin gear button (bottom-left, subtle)
-        GameObject adminBtnObj = new GameObject("AdminBtn");
+        var vlg = contentObj.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = 18;
+        vlg.padding = new RectOffset(25, 25, 8, 25);
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+
+        var csf = contentObj.AddComponent<ContentSizeFitter>();
+        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        scrollComp.content = contentRt;
+
+        // ─── Card 1: Infinite Knight Run (disabled) ───
+        CreateGameModeCard(contentObj.transform,
+            "Infinite Knight Run", "Endless survival with a knight",
+            "SOLO", new Color(0.9f, 0.6f, 0.15f),
+            LoadIconSprite("UI/GameIcons/infinite_knight_run_icon"),
+            true, "Play",
+            null, null, null);
+
+        // ─── Card 2: Seed Chess ───
+        CreateGameModeCard(contentObj.transform,
+            "Seed Chess", "Grow your pieces from seeds over time",
+            "NEW", new Color(0.3f, 0.8f, 0.35f),
+            LoadIconSprite("UI/GameIcons/seed_chess_icon"),
+            false, "Play",
+            () => {
+                PlayerPrefs.SetInt("SeedTutorialDone", 0); PlayerPrefs.Save();
+                HideMainMenu();
+                GameManager.Instance.StartGame(GameMode.SeedChess, PlayMode.SinglePlayer);
+            },
+            () => { HideMainMenu(); GameManager.Instance.StartGame(GameMode.SeedChess, PlayMode.SinglePlayer); },
+            () => { pendingGameMode = GameMode.SeedChess; HideMainMenu(); ShowLobbyPanel(); });
+
+        // ─── Card 3: Bluffy Chess ───
+        CreateGameModeCard(contentObj.transform,
+            "Bluffy Chess", "Hidden identities and bluff calls",
+            "PVP", new Color(0.55f, 0.4f, 0.9f),
+            LoadIconSprite("UI/GameIcons/bluffy_chess_icon"),
+            false, "Play Online",
+            () => {
+                PlayerPrefs.SetInt("BluffyTutorialDone", 0); PlayerPrefs.Save();
+                HideMainMenu();
+                GameManager.Instance.StartGame(GameMode.BluffyChess, PlayMode.SinglePlayer);
+            },
+            () => { HideMainMenu(); GameManager.Instance.StartGame(GameMode.BluffyChess, PlayMode.SinglePlayer); },
+            () => { pendingGameMode = GameMode.BluffyChess; HideMainMenu(); ShowLobbyPanel(); });
+
+        // ─── Admin gear (bottom-left) ───
+        var adminBtnObj = new GameObject("AdminBtn");
         adminBtnObj.transform.SetParent(mainMenuPanel.transform, false);
         var adminBtnImg = adminBtnObj.AddComponent<Image>();
-        adminBtnImg.color = new Color(0.2f, 0.2f, 0.2f, 0.6f);
+        adminBtnImg.color = new Color(0.16f, 0.16f, 0.20f, 0.8f);
         var adminBtnRect = adminBtnImg.rectTransform;
-        adminBtnRect.anchorMin = new Vector2(0, 0);
-        adminBtnRect.anchorMax = new Vector2(0, 0);
-        adminBtnRect.pivot = new Vector2(0, 0);
-        adminBtnRect.anchoredPosition = new Vector2(20, 20);
+        adminBtnRect.anchorMin = Vector2.zero;
+        adminBtnRect.anchorMax = Vector2.zero;
+        adminBtnRect.pivot = Vector2.zero;
+        adminBtnRect.anchoredPosition = new Vector2(15, 15);
         adminBtnRect.sizeDelta = new Vector2(44, 44);
         var adminBtn = adminBtnObj.AddComponent<Button>();
         adminBtn.targetGraphic = adminBtnImg;
         adminBtn.onClick.AddListener(() => ShowAdminPasswordPanel());
-        GameObject adminIconObj = new GameObject("AdminIcon");
+        var adminIconObj = new GameObject("AdminIcon");
         adminIconObj.transform.SetParent(adminBtnObj.transform, false);
-        var adminIconText = adminIconObj.AddComponent<TextMeshProUGUI>();
-        adminIconText.text = "⚙";
-        adminIconText.fontSize = 22;
-        adminIconText.alignment = TextAlignmentOptions.Center;
-        adminIconText.color = new Color(0.6f, 0.6f, 0.6f);
-        var adminIconRect = adminIconText.rectTransform;
-        adminIconRect.anchorMin = Vector2.zero;
-        adminIconRect.anchorMax = Vector2.one;
-        adminIconRect.offsetMin = Vector2.zero;
-        adminIconRect.offsetMax = Vector2.zero;
+        var adminTmp = adminIconObj.AddComponent<TextMeshProUGUI>();
+        adminTmp.text = "\u2699";
+        adminTmp.fontSize = 22;
+        adminTmp.alignment = TextAlignmentOptions.Center;
+        adminTmp.color = new Color(0.5f, 0.5f, 0.55f);
+        var adminIconRt = adminTmp.rectTransform;
+        adminIconRt.anchorMin = Vector2.zero;
+        adminIconRt.anchorMax = Vector2.one;
+        adminIconRt.offsetMin = Vector2.zero;
+        adminIconRt.offsetMax = Vector2.zero;
 
         mainMenuPanel.SetActive(false);
+    }
+
+    private void CreateGameModeCard(Transform parent, string title, string description,
+        string badge, Color badgeColor, Sprite icon, bool disabled, string primaryText,
+        System.Action onTutorial, System.Action onVsAI, System.Action onPrimary)
+    {
+        var card = new GameObject($"Card_{title.Replace(" ", "")}");
+        card.transform.SetParent(parent, false);
+
+        var le = card.AddComponent<LayoutElement>();
+        le.preferredHeight = 190;
+        le.minHeight = 190;
+
+        var cardImg = card.AddComponent<Image>();
+        cardImg.color = disabled ? new Color(0.13f, 0.13f, 0.16f) : new Color(0.15f, 0.15f, 0.19f);
+
+        // ─── Icon ───
+        var iconObj = new GameObject("Icon");
+        iconObj.transform.SetParent(card.transform, false);
+        var iconImg = iconObj.AddComponent<Image>();
+        if (icon != null) iconImg.sprite = icon;
+        iconImg.preserveAspect = true;
+        if (disabled) iconImg.color = new Color(1, 1, 1, 0.35f);
+        var iconRt = iconImg.rectTransform;
+        iconRt.anchorMin = new Vector2(0, 0.5f);
+        iconRt.anchorMax = new Vector2(0, 0.5f);
+        iconRt.pivot = new Vector2(0, 0.5f);
+        iconRt.anchoredPosition = new Vector2(14, 10);
+        iconRt.sizeDelta = new Vector2(72, 72);
+
+        // ─── Title ───
+        float textLeft = 100;
+        var titleObj = new GameObject("Title");
+        titleObj.transform.SetParent(card.transform, false);
+        var titleTmp = titleObj.AddComponent<TextMeshProUGUI>();
+        titleTmp.text = title;
+        titleTmp.fontSize = 26;
+        titleTmp.fontStyle = FontStyles.Bold;
+        titleTmp.color = disabled ? new Color(0.5f, 0.5f, 0.55f) : Color.white;
+        titleTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        titleTmp.overflowMode = TextOverflowModes.Ellipsis;
+        var titleRt = titleTmp.rectTransform;
+        titleRt.anchorMin = new Vector2(0, 1);
+        titleRt.anchorMax = new Vector2(1, 1);
+        titleRt.pivot = new Vector2(0, 1);
+        titleRt.anchoredPosition = new Vector2(textLeft, -18);
+        titleRt.sizeDelta = new Vector2(-textLeft - 80, 34);
+
+        // ─── Badge ───
+        var badgeObj = new GameObject("Badge");
+        badgeObj.transform.SetParent(card.transform, false);
+        var badgeBg = badgeObj.AddComponent<Image>();
+        badgeBg.color = disabled ? new Color(0.25f, 0.25f, 0.28f) : badgeColor;
+        var badgeRt = badgeBg.rectTransform;
+        badgeRt.anchorMin = new Vector2(1, 1);
+        badgeRt.anchorMax = new Vector2(1, 1);
+        badgeRt.pivot = new Vector2(1, 1);
+        badgeRt.anchoredPosition = new Vector2(-14, -20);
+        badgeRt.sizeDelta = new Vector2(52, 22);
+        var badgeTextObj = new GameObject("BadgeText");
+        badgeTextObj.transform.SetParent(badgeObj.transform, false);
+        var badgeTmp = badgeTextObj.AddComponent<TextMeshProUGUI>();
+        badgeTmp.text = badge;
+        badgeTmp.fontSize = 11;
+        badgeTmp.fontStyle = FontStyles.Bold;
+        badgeTmp.alignment = TextAlignmentOptions.Center;
+        badgeTmp.color = disabled ? new Color(0.55f, 0.55f, 0.6f) : Color.white;
+        var badgeTextRt = badgeTmp.rectTransform;
+        badgeTextRt.anchorMin = Vector2.zero;
+        badgeTextRt.anchorMax = Vector2.one;
+        badgeTextRt.offsetMin = Vector2.zero;
+        badgeTextRt.offsetMax = Vector2.zero;
+
+        // ─── Description ───
+        var descObj = new GameObject("Description");
+        descObj.transform.SetParent(card.transform, false);
+        var descTmp = descObj.AddComponent<TextMeshProUGUI>();
+        descTmp.text = description;
+        descTmp.fontSize = 17;
+        descTmp.color = disabled ? new Color(0.4f, 0.4f, 0.43f) : new Color(0.6f, 0.6f, 0.65f);
+        descTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        var descRt = descTmp.rectTransform;
+        descRt.anchorMin = new Vector2(0, 1);
+        descRt.anchorMax = new Vector2(1, 1);
+        descRt.pivot = new Vector2(0, 1);
+        descRt.anchoredPosition = new Vector2(textLeft, -55);
+        descRt.sizeDelta = new Vector2(-textLeft - 20, 24);
+
+        // ─── Disabled overlay ───
+        if (disabled)
+        {
+            var overlayObj = new GameObject("DisabledOverlay");
+            overlayObj.transform.SetParent(card.transform, false);
+            var overlayTmp = overlayObj.AddComponent<TextMeshProUGUI>();
+            overlayTmp.text = "Under Construction";
+            overlayTmp.fontSize = 16;
+            overlayTmp.fontStyle = FontStyles.Italic;
+            overlayTmp.color = new Color(0.85f, 0.6f, 0.15f, 0.7f);
+            overlayTmp.alignment = TextAlignmentOptions.Center;
+            var overlayRt = overlayTmp.rectTransform;
+            overlayRt.anchorMin = new Vector2(0, 0);
+            overlayRt.anchorMax = new Vector2(1, 0);
+            overlayRt.pivot = new Vector2(0.5f, 0);
+            overlayRt.anchoredPosition = new Vector2(0, 22);
+            overlayRt.sizeDelta = new Vector2(0, 30);
+            return;
+        }
+
+        // ─── Action Buttons Row ───
+        float btnY = -145;
+        float btnH = 36;
+        Color secColor = new Color(0.22f, 0.22f, 0.28f);
+        Color secHighlight = new Color(0.30f, 0.30f, 0.38f);
+        Color priColor = new Color(0.22f, 0.52f, 0.28f);
+        Color priHighlight = new Color(0.30f, 0.65f, 0.35f);
+
+        // Tutorial (secondary)
+        var tutBtn = new GameObject("TutorialBtn");
+        tutBtn.transform.SetParent(card.transform, false);
+        var tutImg = tutBtn.AddComponent<Image>();
+        tutImg.color = secColor;
+        var tutRt = tutImg.rectTransform;
+        tutRt.anchorMin = new Vector2(0, 1);
+        tutRt.anchorMax = new Vector2(0, 1);
+        tutRt.pivot = new Vector2(0, 1);
+        tutRt.anchoredPosition = new Vector2(textLeft, btnY);
+        tutRt.sizeDelta = new Vector2(100, btnH);
+        var tutBtnComp = tutBtn.AddComponent<Button>();
+        tutBtnComp.targetGraphic = tutImg;
+        var tutColors = tutBtnComp.colors;
+        tutColors.highlightedColor = secHighlight;
+        tutColors.pressedColor = new Color(0.18f, 0.18f, 0.22f);
+        tutBtnComp.colors = tutColors;
+        if (onTutorial != null) tutBtnComp.onClick.AddListener(() => onTutorial());
+        var tutTextObj = new GameObject("Text");
+        tutTextObj.transform.SetParent(tutBtn.transform, false);
+        var tutTmp = tutTextObj.AddComponent<TextMeshProUGUI>();
+        tutTmp.text = "Tutorial";
+        tutTmp.fontSize = 16;
+        tutTmp.alignment = TextAlignmentOptions.Center;
+        tutTmp.color = new Color(0.75f, 0.75f, 0.8f);
+        var tutTextRt = tutTmp.rectTransform;
+        tutTextRt.anchorMin = Vector2.zero;
+        tutTextRt.anchorMax = Vector2.one;
+        tutTextRt.offsetMin = Vector2.zero;
+        tutTextRt.offsetMax = Vector2.zero;
+
+        // vs AI (secondary)
+        var aiBtn = new GameObject("VsAIBtn");
+        aiBtn.transform.SetParent(card.transform, false);
+        var aiImg = aiBtn.AddComponent<Image>();
+        aiImg.color = secColor;
+        var aiRt = aiImg.rectTransform;
+        aiRt.anchorMin = new Vector2(0, 1);
+        aiRt.anchorMax = new Vector2(0, 1);
+        aiRt.pivot = new Vector2(0, 1);
+        aiRt.anchoredPosition = new Vector2(textLeft + 110, btnY);
+        aiRt.sizeDelta = new Vector2(80, btnH);
+        var aiBtnComp = aiBtn.AddComponent<Button>();
+        aiBtnComp.targetGraphic = aiImg;
+        var aiColors = aiBtnComp.colors;
+        aiColors.highlightedColor = secHighlight;
+        aiColors.pressedColor = new Color(0.18f, 0.18f, 0.22f);
+        aiBtnComp.colors = aiColors;
+        if (onVsAI != null) aiBtnComp.onClick.AddListener(() => onVsAI());
+        var aiTextObj = new GameObject("Text");
+        aiTextObj.transform.SetParent(aiBtn.transform, false);
+        var aiTmp = aiTextObj.AddComponent<TextMeshProUGUI>();
+        aiTmp.text = "vs AI";
+        aiTmp.fontSize = 16;
+        aiTmp.alignment = TextAlignmentOptions.Center;
+        aiTmp.color = new Color(0.75f, 0.75f, 0.8f);
+        var aiTextRt = aiTmp.rectTransform;
+        aiTextRt.anchorMin = Vector2.zero;
+        aiTextRt.anchorMax = Vector2.one;
+        aiTextRt.offsetMin = Vector2.zero;
+        aiTextRt.offsetMax = Vector2.zero;
+
+        // Primary button (right-aligned)
+        var priBtn = new GameObject("PrimaryBtn");
+        priBtn.transform.SetParent(card.transform, false);
+        var priImg = priBtn.AddComponent<Image>();
+        priImg.color = priColor;
+        var priRt = priImg.rectTransform;
+        priRt.anchorMin = new Vector2(1, 1);
+        priRt.anchorMax = new Vector2(1, 1);
+        priRt.pivot = new Vector2(1, 1);
+        priRt.anchoredPosition = new Vector2(-14, btnY);
+        priRt.sizeDelta = new Vector2(130, btnH);
+        var priBtnComp = priBtn.AddComponent<Button>();
+        priBtnComp.targetGraphic = priImg;
+        var priColors2 = priBtnComp.colors;
+        priColors2.highlightedColor = priHighlight;
+        priColors2.pressedColor = new Color(0.18f, 0.40f, 0.20f);
+        priBtnComp.colors = priColors2;
+        if (onPrimary != null) priBtnComp.onClick.AddListener(() => onPrimary());
+        var priTextObj = new GameObject("Text");
+        priTextObj.transform.SetParent(priBtn.transform, false);
+        var priTmp = priTextObj.AddComponent<TextMeshProUGUI>();
+        priTmp.text = primaryText;
+        priTmp.fontSize = 17;
+        priTmp.fontStyle = FontStyles.Bold;
+        priTmp.alignment = TextAlignmentOptions.Center;
+        priTmp.color = Color.white;
+        var priTextRt = priTmp.rectTransform;
+        priTextRt.anchorMin = Vector2.zero;
+        priTextRt.anchorMax = Vector2.one;
+        priTextRt.offsetMin = Vector2.zero;
+        priTextRt.offsetMax = Vector2.zero;
     }
 
     private void CreatePlayerModePanel(GameObject parent)
@@ -409,7 +1017,7 @@ public class UIManager : MonoBehaviour
         titleRect.anchoredPosition = new Vector2(0, 100);
 
         // Single Player button
-        var spBtnObj = CreateButton(playerModePanel, "SinglePlayerBtn", "Single Player", new Vector2(0, 10),
+        var spBtnObj = CreateButton(playerModePanel, "SinglePlayerBtn", "Practice vs Computer", new Vector2(0, 10),
             () => {
                 HidePlayerModePanel();
                 GameManager.Instance.StartGame(pendingGameMode, PlayMode.SinglePlayer);
@@ -461,12 +1069,12 @@ public class UIManager : MonoBehaviour
         var panelImg = seedButtonsPanel.AddComponent<Image>();
         panelImg.color = new Color(0.15f, 0.13f, 0.08f, 0.88f);
 
-        // Horizontal strip above the board, below turn indicator
+        // Horizontal strip below turn text & currency, above board
         var panelRect = panelImg.rectTransform;
         panelRect.anchorMin = new Vector2(0.5f, 1f);
         panelRect.anchorMax = new Vector2(0.5f, 1f);
         panelRect.pivot = new Vector2(0.5f, 1f);
-        panelRect.anchoredPosition = new Vector2(0, -85);
+        panelRect.anchoredPosition = new Vector2(0, -150);
         panelRect.sizeDelta = new Vector2(340, 56);
 
         // "Plant:" label on the left
@@ -641,6 +1249,7 @@ public class UIManager : MonoBehaviour
         if (nameSub != null)
             nameSub.text = $"Playing as: {PlayerPrefs.GetString("PlayerName", "")}";
         mainMenuPanel.SetActive(true);
+        ShowCurrencyDisplay();
 
         // Show profile name-entry panel on top if no name has been set yet
         if (!PlayerPrefs.HasKey("PlayerName"))

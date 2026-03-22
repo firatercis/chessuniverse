@@ -43,6 +43,11 @@ public class GameManager : MonoBehaviour
     private int replayIndex;
     private string replayResult;
 
+    // Tutorial
+    private bool isTutorialMode;
+    private int tutorialStep;
+    private bool isBluffyTutorial;
+
     private void Awake()
     {
         Instance = this;
@@ -87,6 +92,7 @@ public class GameManager : MonoBehaviour
         showingMenu = false;
         waitingForAI = false;
         UIManager.Instance.HideMainMenu();
+        UIManager.Instance.ShowCurrencyDisplay();
 
         currentTurn = PieceColor.White;
         gameState = GameState.Playing;
@@ -113,6 +119,22 @@ public class GameManager : MonoBehaviour
         if (!isBluffyMode)
             UIManager.Instance.UpdateTurnText(currentTurn);
         // Bluffy mode: SetupPieces calls BluffyManager.StartSetupPhase which handles UI
+
+        UpdateSeedButtonsVisibility();
+
+        // Start tutorial for SeedChess SP (first time only)
+        if (mode == GameMode.SeedChess && playMode == PlayMode.SinglePlayer
+            && PlayerPrefs.GetInt("SeedTutorialDone", 0) == 0)
+        {
+            StartTutorial();
+        }
+
+        // Start tutorial for BluffyChess SP (first time only)
+        if (mode == GameMode.BluffyChess && playMode == PlayMode.SinglePlayer
+            && PlayerPrefs.GetInt("BluffyTutorialDone", 0) == 0)
+        {
+            StartBluffyTutorial();
+        }
     }
 
     private void SetupCamera()
@@ -140,6 +162,12 @@ public class GameManager : MonoBehaviour
         if (waitingForPromotion) return;
         if (gameState == GameState.Checkmate || gameState == GameState.Stalemate) return;
         if (waitingForAI) return;
+        // Tutorial: block input during message/overlay steps
+        if (isTutorialMode)
+        {
+            if (isBluffyTutorial && (tutorialStep == 0 || tutorialStep == 2 || tutorialStep == 3)) return;
+            if (!isBluffyTutorial && (tutorialStep == 0 || tutorialStep == 1 || tutorialStep == 4 || tutorialStep == 6)) return;
+        }
 
         // Online mode: block input when it's opponent's turn
         if (isOnline && !isBluffyMode && !NetworkManager.Instance.IsMyTurn()) return;
@@ -148,6 +176,18 @@ public class GameManager : MonoBehaviour
         if (isBluffyMode)
         {
             var phase = BluffyManager.Instance.currentPhase;
+
+            // Bluffy tutorial: detect setup → playing transition
+            if (isTutorialMode && isBluffyTutorial && tutorialStep == 1
+                && phase == BluffyPhase.Playing && currentTurn == PieceColor.White)
+            {
+                tutorialStep = 2;
+                UIManager.Instance.HideFinger();
+                UIManager.Instance.ShowTutorialMessage(
+                    "Big pieces can move in any direction\n(Queen + Knight combined).\n\nAfter a big piece moves, opponent\ncan call Bluff! or Accept.");
+                return;
+            }
+
             if (phase == BluffyPhase.PassDevice
                 || phase == BluffyPhase.WaitingBluff
                 || phase == BluffyPhase.GameOver)
@@ -195,6 +235,26 @@ public class GameManager : MonoBehaviour
             && gameState != GameState.Checkmate
             && gameState != GameState.Stalemate)
         {
+            // Tutorial step 3: AI plants Knight instead of normal play
+            if (isTutorialMode && tutorialStep == 3)
+            {
+                waitingForAI = true;
+                ChessPiece bKing = FindKing(PieceColor.Black);
+                if (bKing != null)
+                {
+                    var plantable = SeedManager.Instance.GetPlantableSquares(bKing);
+                    if (plantable.Count > 0)
+                    {
+                        var sq = plantable[0];
+                        ApplyAIPlanting(sq, PieceType.Knight);
+                        tutorialStep = 4;
+                        UIManager.Instance.ShowTutorialMessage(
+                            "Grow time is proportional\nto the value of the piece.\n\nPawn: 1  |  Knight/Bishop: 3\nRook: 5  |  Queen: 9");
+                    }
+                }
+                return;
+            }
+
             waitingForAI = true;
             ChessAI.Instance.PlayTurn(ChessBoard.Instance.board, enPassantTarget);
             return;
@@ -217,19 +277,26 @@ public class GameManager : MonoBehaviour
         // Planting mode: clicking on a plantable square plants directly
         if (isPlantingMode)
         {
-            var plantable = SeedManager.Instance.GetPlantableSquares(selectedPiece);
-            if (plantable.Contains(pos))
+            ChessPiece king = FindKing(currentTurn);
+            if (king != null)
             {
-                SeedManager.Instance.PlantSeed(pos.x, pos.y, currentTurn, pendingSeedType);
-                if (isOnline)
-                    NetworkManager.Instance.PushAction(NetworkAction.SeedPlant(pos.x, pos.y, pendingSeedType.ToString()));
-                GameLogger.Instance?.LogSeedPlant(pos.x, pos.y, pendingSeedType);
-                DeselectPiece();
-                EndTurn();
-                return;
+                var plantable = SeedManager.Instance.GetPlantableSquares(king);
+                if (plantable.Contains(pos))
+                {
+                    SeedManager.Instance.PlantSeed(pos.x, pos.y, currentTurn, pendingSeedType);
+                    if (isOnline)
+                        NetworkManager.Instance.PushAction(NetworkAction.SeedPlant(pos.x, pos.y, pendingSeedType.ToString()));
+                    GameLogger.Instance?.LogSeedPlant(pos.x, pos.y, pendingSeedType);
+                    DeselectPiece();
+                    EndTurn();
+                    return;
+                }
             }
+            // Tutorial step 2: must plant, don't allow exiting planting mode
+            if (isTutorialMode && tutorialStep == 2)
+                return;
             ExitPlantingMode();
-            return;
+            // Fall through to normal click handling
         }
 
         // If we have a selected piece and clicked on a valid move
@@ -270,15 +337,6 @@ public class GameManager : MonoBehaviour
                 isCapture ? ChessBoard.Instance.captureHighlightColor : ChessBoard.Instance.moveHighlightColor);
         }
 
-        // Show seed plant buttons for king in SeedChess (not when in check)
-        if (GameBootstrap.CurrentMode == GameMode.SeedChess
-            && piece.type == PieceType.King
-            && gameState != GameState.Check)
-        {
-            var plantable = SeedManager.Instance.GetPlantableSquares(piece);
-            if (plantable.Count > 0)
-                UIManager.Instance.ShowSeedButtons();
-        }
     }
 
     private void DeselectPiece()
@@ -287,7 +345,6 @@ public class GameManager : MonoBehaviour
         currentLegalMoves.Clear();
         isPlantingMode = false;
         ChessBoard.Instance.ClearHighlights();
-        UIManager.Instance.HideSeedButtons();
 
         // Re-highlight check if applicable
         if (gameState == GameState.Check)
@@ -296,7 +353,9 @@ public class GameManager : MonoBehaviour
 
     public void OnSeedButtonClick(PieceType type)
     {
-        if (selectedPiece == null || selectedPiece.type != PieceType.King) return;
+        // Tutorial: only allow Pawn in step 1
+        if (isTutorialMode && tutorialStep == 1 && type != PieceType.Pawn)
+            return;
 
         if (isPlantingMode && pendingSeedType == type)
         {
@@ -304,24 +363,88 @@ public class GameManager : MonoBehaviour
             return;
         }
 
+        ChessPiece king = FindKing(currentTurn);
+        if (king == null) return;
+
+        // Deselect any currently selected piece
+        if (selectedPiece != null)
+        {
+            selectedPiece = null;
+            currentLegalMoves.Clear();
+        }
+
         pendingSeedType = type;
         isPlantingMode = true;
         ChessBoard.Instance.ClearHighlights();
 
-        ChessBoard.Instance.HighlightSquare(selectedPiece.x, selectedPiece.y, ChessBoard.Instance.selectedColor);
-
-        var plantable = SeedManager.Instance.GetPlantableSquares(selectedPiece);
+        var plantable = SeedManager.Instance.GetPlantableSquares(king);
         foreach (var sq in plantable)
             ChessBoard.Instance.HighlightSquare(sq.x, sq.y, ChessBoard.Instance.plantHighlightColor);
+
+        // Tutorial: advance to step 2 (planting on board)
+        if (isTutorialMode && tutorialStep == 1)
+            AdvanceTutorial();
     }
 
     private void ExitPlantingMode()
     {
         isPlantingMode = false;
-        if (selectedPiece != null)
-            SelectPiece(selectedPiece);
-        else
-            DeselectPiece();
+        ChessBoard.Instance.ClearHighlights();
+        if (gameState == GameState.Check)
+            HighlightKingInCheck();
+    }
+
+    private ChessPiece FindKing(PieceColor color)
+    {
+        var board = ChessBoard.Instance.board;
+        for (int x = 0; x < 8; x++)
+            for (int y = 0; y < 8; y++)
+            {
+                var p = board[x, y];
+                if (p != null && p.type == PieceType.King && p.color == color)
+                    return p;
+            }
+        return null;
+    }
+
+    private void UpdateSeedButtonsVisibility()
+    {
+        if (GameBootstrap.CurrentMode != GameMode.SeedChess
+            || gameState == GameState.Checkmate
+            || gameState == GameState.Stalemate
+            || showingMenu
+            || isReplayMode)
+        {
+            UIManager.Instance.HideSeedButtons();
+            return;
+        }
+
+        if (gameState == GameState.Check)
+        {
+            UIManager.Instance.HideSeedButtons();
+            return;
+        }
+
+        if (currentPlayMode == PlayMode.SinglePlayer && currentTurn == PieceColor.Black)
+        {
+            UIManager.Instance.HideSeedButtons();
+            return;
+        }
+
+        if (isOnline && !NetworkManager.Instance.IsMyTurn())
+        {
+            UIManager.Instance.HideSeedButtons();
+            return;
+        }
+
+        ChessPiece king = FindKing(currentTurn);
+        if (king != null && SeedManager.Instance.GetPlantableSquares(king).Count > 0)
+        {
+            UIManager.Instance.ShowSeedButtons();
+            return;
+        }
+
+        UIManager.Instance.HideSeedButtons();
     }
 
     private void ExecuteMove(ChessPiece piece, Vector2Int target)
@@ -722,6 +845,26 @@ public class GameManager : MonoBehaviour
             gameState = GameState.Playing;
             UIManager.Instance.UpdateTurnText(currentTurn);
         }
+
+        UpdateSeedButtonsVisibility();
+
+        // Tutorial progression
+        if (isTutorialMode)
+        {
+            // After player plants pawn (step 2), trigger AI turn (step 3)
+            if (tutorialStep == 2 && currentTurn == PieceColor.Black)
+            {
+                UIManager.Instance.HideFinger();
+                tutorialStep = 3;
+            }
+            // After player moves in step 5, pawn should have hatched → show completion
+            else if (tutorialStep == 5 && currentTurn == PieceColor.Black)
+            {
+                tutorialStep = 6;
+                UIManager.Instance.ShowTutorialMessage(
+                    "That's all!\nThe rest is classic chess.", "End Tutorial");
+            }
+        }
     }
 
     private void HighlightKingInCheck()
@@ -737,6 +880,132 @@ public class GameManager : MonoBehaviour
                     return;
                 }
             }
+        }
+    }
+
+    // ─── Tutorial ───
+
+    private void StartTutorial()
+    {
+        isTutorialMode = true;
+        tutorialStep = 0;
+        UIManager.Instance.ShowTutorialMessage(
+            "You can either move your King\nor plant the seed of a piece.");
+    }
+
+    public void AdvanceTutorial()
+    {
+        tutorialStep++;
+        if (isBluffyTutorial)
+        {
+            AdvanceBluffyTutorial();
+            return;
+        }
+
+        switch (tutorialStep)
+        {
+            case 1:
+                // Focus on Pawn seed button only, show finger
+                UIManager.Instance.ShowTutorialOverlayOnly();
+                UIManager.Instance.FocusSeedButtons();
+                UIManager.Instance.SetSeedButtonsInteractable(PieceType.Pawn);
+                UIManager.Instance.ShowFingerOnPawnButton();
+                break;
+
+            case 2:
+                // Player clicked Pawn button, now planting mode is active
+                // Hide overlay, show finger on a plantable square
+                UIManager.Instance.HideTutorialOverlay();
+                UIManager.Instance.UnfocusSeedButtons();
+                {
+                    ChessPiece king = FindKing(currentTurn);
+                    if (king != null)
+                    {
+                        var plantable = SeedManager.Instance.GetPlantableSquares(king);
+                        if (plantable.Count > 0)
+                            UIManager.Instance.ShowFingerOnBoardSquare(plantable[0].x, plantable[0].y);
+                    }
+                }
+                break;
+
+            case 3:
+                // Player planted pawn → AI's turn → AI plants Knight
+                // This is handled in Update()
+                break;
+
+            case 4:
+                // After AI planted, show growth time message
+                UIManager.Instance.ShowTutorialMessage(
+                    "Grow time is proportional\nto the value of the piece.\n\nPawn: 1 turn  |  Knight/Bishop: 3\nRook: 5  |  Queen: 9");
+                break;
+
+            case 5:
+                // Player can now move freely. Overlay hidden.
+                UIManager.Instance.HideTutorialOverlay();
+                break;
+
+            case 6:
+                // Pawn hatched, show completion message
+                UIManager.Instance.ShowTutorialMessage(
+                    "That's all!\nThe rest is classic chess.", "End Tutorial");
+                break;
+
+            case 7:
+                // End tutorial
+                EndTutorial();
+                break;
+        }
+    }
+
+    public void SkipTutorial()
+    {
+        EndTutorial();
+    }
+
+    private void EndTutorial()
+    {
+        string key = isBluffyTutorial ? "BluffyTutorialDone" : "SeedTutorialDone";
+        isTutorialMode = false;
+        isBluffyTutorial = false;
+        tutorialStep = 0;
+        PlayerPrefs.SetInt(key, 1);
+        PlayerPrefs.Save();
+        UIManager.Instance.HideTutorialAll();
+        UpdateSeedButtonsVisibility();
+    }
+
+    private void StartBluffyTutorial()
+    {
+        isTutorialMode = true;
+        isBluffyTutorial = true;
+        tutorialStep = 0;
+        UIManager.Instance.ShowTutorialMessage(
+            "In Bluffy Chess, all big pieces are masked.\nYour opponent can't see your real pieces!\n\nArrange your back rank, then Confirm.");
+    }
+
+    private void AdvanceBluffyTutorial()
+    {
+        switch (tutorialStep)
+        {
+            case 1:
+                // Setup phase active — show finger on Confirm button
+                UIManager.Instance.HideTutorialOverlay();
+                UIManager.Instance.ShowFingerOnBluffyConfirm();
+                break;
+
+            case 2:
+                // Detected in Update when phase becomes Playing
+                // Message already shown there
+                break;
+
+            case 3:
+                UIManager.Instance.ShowTutorialMessage(
+                    "Caught bluffing \u2192 your piece dies.\nWrong call \u2192 you sacrifice a piece.\n\nThat's all!", "End Tutorial");
+                break;
+
+            case 4:
+                EndTutorial();
+                break;
         }
     }
 
@@ -765,6 +1034,7 @@ public class GameManager : MonoBehaviour
         waitingForAI     = false;
 
         UIManager.Instance.HideMainMenu();
+        UIManager.Instance.HideCurrencyDisplay();
         ChessAI.Instance.ResetHistory();
         SeedManager.Instance.ClearAll();
         ChessBoard.Instance.SetFlipped(false);
@@ -978,6 +1248,9 @@ public class GameManager : MonoBehaviour
         promotingPawn = null;
         isPlantingMode = false;
         waitingForAI = false;
+        isTutorialMode = false;
+        isBluffyTutorial = false;
+        tutorialStep = 0;
         showingMenu = true;
         ChessAI.Instance.ResetHistory();
 

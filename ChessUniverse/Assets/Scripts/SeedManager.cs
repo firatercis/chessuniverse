@@ -172,10 +172,10 @@ public class SeedManager : MonoBehaviour
         {
             sr.sprite = sprite;
             sr.sortingOrder = 2;
-            sr.color = new Color(1f, 1f, 1f, 0.5f);
+            sr.color = new Color(1f, 1f, 1f, 0.65f);
             float pixelsPerUnit = sprite.pixelsPerUnit;
             float spriteWorldSize = sprite.rect.height / pixelsPerUnit;
-            float targetSize = 0.5f;
+            float targetSize = 0.7f;
             float scale = targetSize / spriteWorldSize;
             spriteObj.transform.localScale = new Vector3(scale, scale, 1f);
         }
@@ -183,15 +183,15 @@ public class SeedManager : MonoBehaviour
         // Turn counter text (direct child of root, not affected by sprite scale)
         var textObj = new GameObject("TurnCounter");
         textObj.transform.SetParent(obj.transform, false);
-        textObj.transform.localPosition = new Vector3(0.3f, -0.3f, 0);
+        textObj.transform.localPosition = new Vector3(0.35f, -0.35f, 0);
         var tmp = textObj.AddComponent<TextMeshPro>();
         tmp.text = turnsRemaining.ToString();
-        tmp.fontSize = 4;
+        tmp.fontSize = 6;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = new Color(1f, 0.85f, 0.2f);
         tmp.fontStyle = FontStyles.Bold;
         tmp.sortingOrder = 4;
-        tmp.rectTransform.sizeDelta = new Vector2(0.6f, 0.6f);
+        tmp.rectTransform.sizeDelta = new Vector2(0.8f, 0.8f);
 
         return obj;
     }

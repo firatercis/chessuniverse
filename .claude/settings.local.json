@@ -3,7 +3,12 @@
     "allow": [
       "Bash(dir:*)",
       "Bash(git commit:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(wc:*)",
+      "Bash(ls -lh C:ProjectsUnityChessUniverseChessUniverseAssetsScripts/*.cs)",
+      "Bash(sort -k2)",
+      "Bash(find:*)",
+      "Bash(grep:*)"
     ]
   }
 }
