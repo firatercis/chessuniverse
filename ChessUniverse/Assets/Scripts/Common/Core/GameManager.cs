@@ -82,7 +82,15 @@ public class GameManager : MonoBehaviour
         SetupCamera();
         MigratePlayerPrefsIfNeeded();
         ChessBoard.Instance.CreateBoard();
+        ChessBoard.Instance.LoadActiveTheme();
         UIManager.Instance.ShowMainMenu();
+
+        // Daily login reward
+        if (PlayerStats.CheckDailyLogin())
+        {
+            UIManager.AddGold(10);
+            UIManager.Instance.ShowSplashText("Daily Reward! +10", 2f, null, new Color(1f, 0.85f, 0.25f));
+        }
     }
 
     public void StartGame(GameMode mode, PlayMode playMode = PlayMode.Local)
@@ -102,6 +110,20 @@ public class GameManager : MonoBehaviour
         waitingForPromotion = false;
         promotingPawn = null;
         isPlantingMode = false;
+
+        // Activate plugin
+        var plugin = GameModeManager.Instance?.GetPlugin(mode.ToString());
+        GameModeManager.Instance?.SetActivePlugin(mode.ToString());
+
+        // Plugin-driven modes that override everything (e.g. Infinite Knight Run)
+        if (plugin != null && plugin.OverridesUpdate() && mode != GameMode.BluffyChess)
+        {
+            plugin.SetupBoard(ChessBoard.Instance);
+            plugin.CreateGameUI(UIManager.Instance.GetCanvas());
+            plugin.OnGameStart(playMode);
+            UIManager.Instance.HideTurnText();
+            return;
+        }
 
         ChessAI.Instance.ResetHistory();
         SeedManager.Instance.ClearAll();
@@ -137,7 +159,7 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    private void SetupCamera()
+    public void SetupCamera()
     {
         mainCam.orthographic = true;
         mainCam.transform.position = new Vector3(3.5f, 3.5f, -10);
@@ -159,6 +181,12 @@ public class GameManager : MonoBehaviour
     {
         if (isReplayMode) return;
         if (showingMenu) return;
+
+        // Plugin-driven modes handle their own Update (e.g. Infinite Knight Run)
+        var ap = GameModeManager.Instance?.ActivePlugin;
+        if (ap != null && ap.OverridesUpdate() && GameBootstrap.CurrentMode != GameMode.BluffyChess)
+            return;
+
         if (waitingForPromotion) return;
         if (gameState == GameState.Checkmate || gameState == GameState.Stalemate) return;
         if (waitingForAI) return;
@@ -826,12 +854,15 @@ public class GameManager : MonoBehaviour
             gameState = GameState.Checkmate;
             PieceColor winner = currentTurn == PieceColor.White ? PieceColor.Black : PieceColor.White;
             GameLogger.Instance?.EndGame($"{winner.ToString().ToLower()}_wins");
+            RecordGameResult(winner);
             UIManager.Instance.ShowGameOver(winner);
         }
         else if (!inCheck && !hasLegalMove)
         {
             gameState = GameState.Stalemate;
             GameLogger.Instance?.EndGame("stalemate");
+            PlayerStats.RecordDraw();
+            PlayerStats.SyncToFirebase(this);
             UIManager.Instance.ShowStalemate();
         }
         else if (inCheck)
@@ -965,6 +996,8 @@ public class GameManager : MonoBehaviour
     private void EndTutorial()
     {
         string key = isBluffyTutorial ? "BluffyTutorialDone" : "SeedTutorialDone";
+        // Award gold only on first completion
+        bool firstTime = PlayerPrefs.GetInt(key, 0) == 0;
         isTutorialMode = false;
         isBluffyTutorial = false;
         tutorialStep = 0;
@@ -972,6 +1005,8 @@ public class GameManager : MonoBehaviour
         PlayerPrefs.Save();
         UIManager.Instance.HideTutorialAll();
         UpdateSeedButtonsVisibility();
+        if (firstTime)
+            UIManager.AddGold(20);
     }
 
     private void StartBluffyTutorial()
@@ -1007,6 +1042,38 @@ public class GameManager : MonoBehaviour
                 EndTutorial();
                 break;
         }
+    }
+
+    // ─── Game Result & Rewards ───
+
+    public void RecordGameResult(PieceColor winner)
+    {
+        bool playerWon = false;
+
+        if (currentPlayMode == PlayMode.SinglePlayer)
+            playerWon = winner == PieceColor.White; // Player is always White in SP
+        else if (currentPlayMode == PlayMode.Online && NetworkManager.Instance != null)
+            playerWon = (winner == PieceColor.White && NetworkManager.Instance.IsHost)
+                     || (winner == PieceColor.Black && !NetworkManager.Instance.IsHost);
+        else
+            playerWon = false; // Local 2P: no single "player" to reward
+
+        int goldEarned = 0;
+        if (playerWon)
+        {
+            PlayerStats.RecordWin();
+            goldEarned = 5;
+            if (PlayerStats.CurrentStreak >= 3)
+                goldEarned += 2;
+            UIManager.AddGold(goldEarned);
+        }
+        else if (currentPlayMode != PlayMode.Local)
+        {
+            PlayerStats.RecordLoss();
+        }
+
+        UIManager.Instance.SetGoldEarned(goldEarned);
+        PlayerStats.SyncToFirebase(this);
     }
 
     // ─── Replay Mode ───
@@ -1239,6 +1306,12 @@ public class GameManager : MonoBehaviour
         if (isOnline && NetworkManager.Instance.IsOnline)
             NetworkManager.Instance.LeaveRoom();
 
+        // Clean up active plugin
+        var activePlugin = GameModeManager.Instance?.ActivePlugin;
+        if (activePlugin != null)
+            activePlugin.DestroyGameUI();
+        GameModeManager.Instance?.ClearActivePlugin(); // calls OnGameEnd()
+
         currentTurn = PieceColor.White;
         gameState = GameState.Playing;
         selectedPiece = null;
@@ -1255,6 +1328,8 @@ public class GameManager : MonoBehaviour
         ChessAI.Instance.ResetHistory();
 
         SeedManager.Instance.ClearAll();
+        // Re-enable chess board in case it was hidden by a plugin
+        ChessBoard.Instance.gameObject.SetActive(true);
         ChessBoard.Instance.ClearHighlights();
         ChessBoard.Instance.ClearAllPieces();
         UIManager.Instance.HideGameOver();
@@ -1262,6 +1337,7 @@ public class GameManager : MonoBehaviour
         UIManager.Instance.HideSeedButtons();
         UIManager.Instance.HideBluffyPanels();
         ChessBoard.Instance.SetFlipped(false);
+        SetupCamera();
         UIManager.Instance.ShowMainMenu();
     }
 }

@@ -78,6 +78,24 @@ public class UIManager : MonoBehaviour
     private GameObject fingerObj;
     private Coroutine fingerPulseCoroutine;
 
+    // Bottom tab bar
+    private GameObject tabBarPanel;
+    private GameObject marketPanel;
+    private GameObject leaderboardPanel;
+    private GameObject marketContentScroll;
+    private GameObject marketContentObj;
+    private GameObject leaderboardContentScroll;
+    private GameObject leaderboardContentObj;
+    private TextMeshProUGUI leaderboardStatusText;
+    private int activeTabIndex = 1; // 0=Market, 1=Home, 2=Ranks
+    private GameObject[] tabButtons;
+    private TextMeshProUGUI[] tabLabels;
+
+    // Enhanced game-over
+    private TextMeshProUGUI gameOverRewardText;
+    private TextMeshProUGUI gameOverStreakText;
+    private int goldEarnedThisGame;
+
     // Online panels
     private GameObject lobbyPanel;
     private GameObject hostWaitPanel;
@@ -145,6 +163,9 @@ public class UIManager : MonoBehaviour
 
         // Menus and panels
         CreateMainMenuPanel(canvasObj);
+        CreateMarketPanel(canvasObj);
+        CreateLeaderboardPanel(canvasObj);
+        CreateBottomTabBar(canvasObj);
         CreatePlayerModePanel(canvasObj);
         CreateSeedButtonsPanel(canvasObj);
 
@@ -510,7 +531,7 @@ public class UIManager : MonoBehaviour
         var panelRect = panelImg.rectTransform;
         panelRect.anchorMin = new Vector2(0.5f, 0.5f);
         panelRect.anchorMax = new Vector2(0.5f, 0.5f);
-        panelRect.sizeDelta = new Vector2(500, 250);
+        panelRect.sizeDelta = new Vector2(500, 340);
 
         // Game over text
         GameObject textObj = new GameObject("GameOverText");
@@ -521,13 +542,43 @@ public class UIManager : MonoBehaviour
         gameOverText.color = Color.white;
         gameOverText.fontStyle = FontStyles.Bold;
         var textRect = gameOverText.rectTransform;
-        textRect.anchorMin = new Vector2(0, 0.4f);
+        textRect.anchorMin = new Vector2(0, 0.6f);
         textRect.anchorMax = new Vector2(1, 1);
         textRect.offsetMin = new Vector2(20, 0);
-        textRect.offsetMax = new Vector2(-20, -20);
+        textRect.offsetMax = new Vector2(-20, -15);
+
+        // Reward text
+        GameObject rewardObj = new GameObject("RewardText");
+        rewardObj.transform.SetParent(gameOverPanel.transform, false);
+        gameOverRewardText = rewardObj.AddComponent<TextMeshProUGUI>();
+        gameOverRewardText.fontSize = 24;
+        gameOverRewardText.alignment = TextAlignmentOptions.Center;
+        gameOverRewardText.color = new Color(1f, 0.85f, 0.25f);
+        gameOverRewardText.fontStyle = FontStyles.Bold;
+        var rewardRect = gameOverRewardText.rectTransform;
+        rewardRect.anchorMin = new Vector2(0, 0.42f);
+        rewardRect.anchorMax = new Vector2(1, 0.58f);
+        rewardRect.offsetMin = new Vector2(20, 0);
+        rewardRect.offsetMax = new Vector2(-20, 0);
+
+        // Streak text
+        GameObject streakObj = new GameObject("StreakText");
+        streakObj.transform.SetParent(gameOverPanel.transform, false);
+        gameOverStreakText = streakObj.AddComponent<TextMeshProUGUI>();
+        gameOverStreakText.fontSize = 18;
+        gameOverStreakText.alignment = TextAlignmentOptions.Center;
+        gameOverStreakText.color = new Color(0.7f, 0.7f, 0.75f);
+        var streakRect = gameOverStreakText.rectTransform;
+        streakRect.anchorMin = new Vector2(0, 0.30f);
+        streakRect.anchorMax = new Vector2(1, 0.42f);
+        streakRect.offsetMin = new Vector2(20, 0);
+        streakRect.offsetMax = new Vector2(-20, 0);
 
         // Play again button
-        CreateButton(gameOverPanel, "PlayAgainBtn", "Play Again", new Vector2(0, -70), () => GameManager.Instance.RestartGame());
+        CreateButton(gameOverPanel, "PlayAgainBtn", "Play Again", new Vector2(-100, -130), () => GameManager.Instance.RestartGame());
+
+        // Home button
+        CreateButton(gameOverPanel, "HomeBtn", "Home", new Vector2(100, -130), () => GameManager.Instance.RestartGame());
 
         gameOverPanel.SetActive(false);
     }
@@ -676,7 +727,7 @@ public class UIManager : MonoBehaviour
         var scrollRt = scrollObj.GetComponent<RectTransform>();
         scrollRt.anchorMin = Vector2.zero;
         scrollRt.anchorMax = Vector2.one;
-        scrollRt.offsetMin = new Vector2(0, 70);
+        scrollRt.offsetMin = new Vector2(0, 80); // room for tab bar (70px) + padding
         scrollRt.offsetMax = new Vector2(0, -100);
         scrollComp.horizontal = false;
         scrollComp.vertical = true;
@@ -713,41 +764,62 @@ public class UIManager : MonoBehaviour
         csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         scrollComp.content = contentRt;
 
-        // ─── Card 1: Infinite Knight Run (disabled) ───
-        CreateGameModeCard(contentObj.transform,
-            "Infinite Knight Run", "Endless survival with a knight",
-            "SOLO", new Color(0.9f, 0.6f, 0.15f),
-            LoadIconSprite("UI/GameIcons/infinite_knight_run_icon"),
-            true, "Play",
-            null, null, null);
+        // ─── Build cards from GameModeRegistry (data-driven) ───
+        // Each GameModeDefinition drives one card. The registry controls
+        // which modes appear and in what order. If a definition or its plugin
+        // is missing, the card is still shown but disabled.
+        var mgr = GameModeManager.Instance;
+        if (mgr != null && mgr.LoadedDefinitions != null)
+        {
+            foreach (var def in mgr.LoadedDefinitions)
+            {
+                if (def == null) continue;
 
-        // ─── Card 2: Seed Chess ───
-        CreateGameModeCard(contentObj.transform,
-            "Seed Chess", "Grow your pieces from seeds over time",
-            "NEW", new Color(0.3f, 0.8f, 0.35f),
-            LoadIconSprite("UI/GameIcons/seed_chess_icon"),
-            false, "Play",
-            () => {
-                PlayerPrefs.SetInt("SeedTutorialDone", 0); PlayerPrefs.Save();
-                HideMainMenu();
-                GameManager.Instance.StartGame(GameMode.SeedChess, PlayMode.SinglePlayer);
-            },
-            () => { HideMainMenu(); GameManager.Instance.StartGame(GameMode.SeedChess, PlayMode.SinglePlayer); },
-            () => { pendingGameMode = GameMode.SeedChess; HideMainMenu(); ShowLobbyPanel(); });
+                // Resolve the GameMode enum from modeId for legacy StartGame calls
+                System.Enum.TryParse(def.modeId, out GameMode gm);
+                GameMode capturedMode = gm;
+                string tutKey = def.tutorialPrefsKey;
+                bool pluginAvailable = mgr.HasPlugin(def.modeId);
+                bool disabled = def.isDisabled || !pluginAvailable;
 
-        // ─── Card 3: Bluffy Chess ───
-        CreateGameModeCard(contentObj.transform,
-            "Bluffy Chess", "Hidden identities and bluff calls",
-            "PVP", new Color(0.55f, 0.4f, 0.9f),
-            LoadIconSprite("UI/GameIcons/bluffy_chess_icon"),
-            false, "Play Online",
-            () => {
-                PlayerPrefs.SetInt("BluffyTutorialDone", 0); PlayerPrefs.Save();
-                HideMainMenu();
-                GameManager.Instance.StartGame(GameMode.BluffyChess, PlayMode.SinglePlayer);
-            },
-            () => { HideMainMenu(); GameManager.Instance.StartGame(GameMode.BluffyChess, PlayMode.SinglePlayer); },
-            () => { pendingGameMode = GameMode.BluffyChess; HideMainMenu(); ShowLobbyPanel(); });
+                bool hasOnline = def.supportsOnline;
+                bool hasTut = def.hasTutorial;
+                bool hasAI = def.supportsSinglePlayer;
+
+                CreateGameModeCard(contentObj.transform,
+                    def.displayName, def.description,
+                    def.badges,
+                    def.icon,
+                    disabled, def.primaryButtonText,
+                    hasTut, hasAI, hasOnline,
+                    // Tutorial: reset tutorial flag, start single player
+                    (disabled || !hasTut) ? null : (System.Action)(() => {
+                        if (!string.IsNullOrEmpty(tutKey))
+                        { PlayerPrefs.SetInt(tutKey, 0); PlayerPrefs.Save(); }
+                        HideMainMenu();
+                        GameManager.Instance.StartGame(capturedMode, PlayMode.SinglePlayer);
+                    }),
+                    // vs AI: start single player
+                    (disabled || !hasAI) ? null : (System.Action)(() => {
+                        HideMainMenu();
+                        GameManager.Instance.StartGame(capturedMode, PlayMode.SinglePlayer);
+                    }),
+                    // Primary (Play / Play Online): show lobby for online, or SP if no online
+                    disabled ? null : (System.Action)(() => {
+                        if (hasOnline)
+                        {
+                            pendingGameMode = capturedMode;
+                            HideMainMenu();
+                            ShowLobbyPanel();
+                        }
+                        else
+                        {
+                            HideMainMenu();
+                            GameManager.Instance.StartGame(capturedMode, PlayMode.SinglePlayer);
+                        }
+                    }));
+            }
+        }
 
         // ─── Admin gear (bottom-left) ───
         var adminBtnObj = new GameObject("AdminBtn");
@@ -758,7 +830,7 @@ public class UIManager : MonoBehaviour
         adminBtnRect.anchorMin = Vector2.zero;
         adminBtnRect.anchorMax = Vector2.zero;
         adminBtnRect.pivot = Vector2.zero;
-        adminBtnRect.anchoredPosition = new Vector2(15, 15);
+        adminBtnRect.anchoredPosition = new Vector2(15, 80); // above tab bar
         adminBtnRect.sizeDelta = new Vector2(44, 44);
         var adminBtn = adminBtnObj.AddComponent<Button>();
         adminBtn.targetGraphic = adminBtnImg;
@@ -780,7 +852,8 @@ public class UIManager : MonoBehaviour
     }
 
     private void CreateGameModeCard(Transform parent, string title, string description,
-        string badge, Color badgeColor, Sprite icon, bool disabled, string primaryText,
+        BadgeDefinition[] badges, Sprite icon, bool disabled, string primaryText,
+        bool showTutorial, bool showVsAI, bool showOnline,
         System.Action onTutorial, System.Action onVsAI, System.Action onPrimary)
     {
         var card = new GameObject($"Card_{title.Replace(" ", "")}");
@@ -825,30 +898,43 @@ public class UIManager : MonoBehaviour
         titleRt.anchoredPosition = new Vector2(textLeft, -18);
         titleRt.sizeDelta = new Vector2(-textLeft - 80, 34);
 
-        // ─── Badge ───
-        var badgeObj = new GameObject("Badge");
-        badgeObj.transform.SetParent(card.transform, false);
-        var badgeBg = badgeObj.AddComponent<Image>();
-        badgeBg.color = disabled ? new Color(0.25f, 0.25f, 0.28f) : badgeColor;
-        var badgeRt = badgeBg.rectTransform;
-        badgeRt.anchorMin = new Vector2(1, 1);
-        badgeRt.anchorMax = new Vector2(1, 1);
-        badgeRt.pivot = new Vector2(1, 1);
-        badgeRt.anchoredPosition = new Vector2(-14, -20);
-        badgeRt.sizeDelta = new Vector2(52, 22);
-        var badgeTextObj = new GameObject("BadgeText");
-        badgeTextObj.transform.SetParent(badgeObj.transform, false);
-        var badgeTmp = badgeTextObj.AddComponent<TextMeshProUGUI>();
-        badgeTmp.text = badge;
-        badgeTmp.fontSize = 11;
-        badgeTmp.fontStyle = FontStyles.Bold;
-        badgeTmp.alignment = TextAlignmentOptions.Center;
-        badgeTmp.color = disabled ? new Color(0.55f, 0.55f, 0.6f) : Color.white;
-        var badgeTextRt = badgeTmp.rectTransform;
-        badgeTextRt.anchorMin = Vector2.zero;
-        badgeTextRt.anchorMax = Vector2.one;
-        badgeTextRt.offsetMin = Vector2.zero;
-        badgeTextRt.offsetMax = Vector2.zero;
+        // ─── Badges (rendered right-to-left in the top-right corner) ───
+        if (badges != null)
+        {
+            float badgeX = -14;
+            for (int bi = badges.Length - 1; bi >= 0; bi--)
+            {
+                var bd = badges[bi];
+                if (bd == null) continue;
+
+                var badgeObj = new GameObject($"Badge_{bi}");
+                badgeObj.transform.SetParent(card.transform, false);
+                var badgeBg = badgeObj.AddComponent<Image>();
+                badgeBg.color = disabled ? new Color(0.25f, 0.25f, 0.28f) : bd.color;
+                var badgeRt = badgeBg.rectTransform;
+                badgeRt.anchorMin = new Vector2(1, 1);
+                badgeRt.anchorMax = new Vector2(1, 1);
+                badgeRt.pivot = new Vector2(1, 1);
+                badgeRt.anchoredPosition = new Vector2(badgeX, -20);
+                badgeRt.sizeDelta = new Vector2(52, 22);
+
+                var badgeTextObj = new GameObject("Text");
+                badgeTextObj.transform.SetParent(badgeObj.transform, false);
+                var badgeTmp = badgeTextObj.AddComponent<TextMeshProUGUI>();
+                badgeTmp.text = bd.label;
+                badgeTmp.fontSize = 11;
+                badgeTmp.fontStyle = FontStyles.Bold;
+                badgeTmp.alignment = TextAlignmentOptions.Center;
+                badgeTmp.color = disabled ? new Color(0.55f, 0.55f, 0.6f) : Color.white;
+                var badgeTextRt = badgeTmp.rectTransform;
+                badgeTextRt.anchorMin = Vector2.zero;
+                badgeTextRt.anchorMax = Vector2.one;
+                badgeTextRt.offsetMin = Vector2.zero;
+                badgeTextRt.offsetMax = Vector2.zero;
+
+                badgeX -= 58; // next badge shifts left
+            }
+        }
 
         // ─── Description ───
         var descObj = new GameObject("Description");
@@ -893,7 +979,11 @@ public class UIManager : MonoBehaviour
         Color priColor = new Color(0.22f, 0.52f, 0.28f);
         Color priHighlight = new Color(0.30f, 0.65f, 0.35f);
 
-        // Tutorial (secondary)
+        float nextBtnX = textLeft;
+
+        // Tutorial (secondary) — only if mode has tutorial
+        if (showTutorial)
+        {
         var tutBtn = new GameObject("TutorialBtn");
         tutBtn.transform.SetParent(card.transform, false);
         var tutImg = tutBtn.AddComponent<Image>();
@@ -902,7 +992,7 @@ public class UIManager : MonoBehaviour
         tutRt.anchorMin = new Vector2(0, 1);
         tutRt.anchorMax = new Vector2(0, 1);
         tutRt.pivot = new Vector2(0, 1);
-        tutRt.anchoredPosition = new Vector2(textLeft, btnY);
+        tutRt.anchoredPosition = new Vector2(nextBtnX, btnY);
         tutRt.sizeDelta = new Vector2(100, btnH);
         var tutBtnComp = tutBtn.AddComponent<Button>();
         tutBtnComp.targetGraphic = tutImg;
@@ -923,8 +1013,12 @@ public class UIManager : MonoBehaviour
         tutTextRt.anchorMax = Vector2.one;
         tutTextRt.offsetMin = Vector2.zero;
         tutTextRt.offsetMax = Vector2.zero;
+        nextBtnX += 110;
+        }
 
-        // vs AI (secondary)
+        // vs AI (secondary) — only if mode supports single player AND has online (otherwise Play button handles SP)
+        if (showVsAI && showOnline)
+        {
         var aiBtn = new GameObject("VsAIBtn");
         aiBtn.transform.SetParent(card.transform, false);
         var aiImg = aiBtn.AddComponent<Image>();
@@ -933,7 +1027,7 @@ public class UIManager : MonoBehaviour
         aiRt.anchorMin = new Vector2(0, 1);
         aiRt.anchorMax = new Vector2(0, 1);
         aiRt.pivot = new Vector2(0, 1);
-        aiRt.anchoredPosition = new Vector2(textLeft + 110, btnY);
+        aiRt.anchoredPosition = new Vector2(nextBtnX, btnY);
         aiRt.sizeDelta = new Vector2(80, btnH);
         var aiBtnComp = aiBtn.AddComponent<Button>();
         aiBtnComp.targetGraphic = aiImg;
@@ -954,6 +1048,8 @@ public class UIManager : MonoBehaviour
         aiTextRt.anchorMax = Vector2.one;
         aiTextRt.offsetMin = Vector2.zero;
         aiTextRt.offsetMax = Vector2.zero;
+        nextBtnX += 90;
+        }
 
         // Primary button (right-aligned)
         var priBtn = new GameObject("PrimaryBtn");
@@ -986,6 +1082,605 @@ public class UIManager : MonoBehaviour
         priTextRt.anchorMax = Vector2.one;
         priTextRt.offsetMin = Vector2.zero;
         priTextRt.offsetMax = Vector2.zero;
+    }
+
+    // ─── Bottom Tab Bar ───
+
+    private void CreateBottomTabBar(GameObject parent)
+    {
+        tabBarPanel = new GameObject("TabBarPanel");
+        tabBarPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = tabBarPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.07f, 0.07f, 0.10f, 1f);
+
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = new Vector2(0, 0);
+        panelRect.anchorMax = new Vector2(1, 0);
+        panelRect.pivot = new Vector2(0.5f, 0);
+        panelRect.anchoredPosition = Vector2.zero;
+        panelRect.sizeDelta = new Vector2(0, 70);
+
+        string[] labels = { "Market", "Home", "Ranks" };
+        string[] icons  = { "\u2605", "\u2302", "\u265B" }; // star, house, queen
+        Color activeColor = new Color(1f, 0.85f, 0.25f);
+        Color inactiveColor = new Color(0.45f, 0.45f, 0.5f);
+
+        tabButtons = new GameObject[3];
+        tabLabels = new TextMeshProUGUI[3];
+
+        for (int i = 0; i < 3; i++)
+        {
+            int idx = i;
+            float xMin = i / 3f;
+            float xMax = (i + 1) / 3f;
+
+            var btnObj = new GameObject($"Tab_{labels[i]}");
+            btnObj.transform.SetParent(tabBarPanel.transform, false);
+            var btnImg = btnObj.AddComponent<Image>();
+            btnImg.color = Color.clear;
+            var btnRect = btnImg.rectTransform;
+            btnRect.anchorMin = new Vector2(xMin, 0);
+            btnRect.anchorMax = new Vector2(xMax, 1);
+            btnRect.offsetMin = Vector2.zero;
+            btnRect.offsetMax = Vector2.zero;
+
+            var btn = btnObj.AddComponent<Button>();
+            btn.targetGraphic = btnImg;
+            btn.onClick.AddListener(() => SwitchTab(idx));
+
+            // Icon
+            var iconObj = new GameObject("Icon");
+            iconObj.transform.SetParent(btnObj.transform, false);
+            var iconTmp = iconObj.AddComponent<TextMeshProUGUI>();
+            iconTmp.text = icons[i];
+            iconTmp.fontSize = 28;
+            iconTmp.alignment = TextAlignmentOptions.Center;
+            iconTmp.color = (i == activeTabIndex) ? activeColor : inactiveColor;
+            var iconRt = iconTmp.rectTransform;
+            iconRt.anchorMin = new Vector2(0, 0.4f);
+            iconRt.anchorMax = new Vector2(1, 1);
+            iconRt.offsetMin = Vector2.zero;
+            iconRt.offsetMax = Vector2.zero;
+
+            // Label
+            var labelObj = new GameObject("Label");
+            labelObj.transform.SetParent(btnObj.transform, false);
+            var labelTmp = labelObj.AddComponent<TextMeshProUGUI>();
+            labelTmp.text = labels[i];
+            labelTmp.fontSize = 14;
+            labelTmp.alignment = TextAlignmentOptions.Center;
+            labelTmp.color = (i == activeTabIndex) ? activeColor : inactiveColor;
+            var labelRt = labelTmp.rectTransform;
+            labelRt.anchorMin = new Vector2(0, 0);
+            labelRt.anchorMax = new Vector2(1, 0.4f);
+            labelRt.offsetMin = Vector2.zero;
+            labelRt.offsetMax = Vector2.zero;
+
+            tabButtons[i] = btnObj;
+            tabLabels[i] = labelTmp;
+        }
+
+        tabBarPanel.SetActive(false);
+    }
+
+    public void SwitchTab(int index)
+    {
+        activeTabIndex = index;
+        Color activeColor = new Color(1f, 0.85f, 0.25f);
+        Color inactiveColor = new Color(0.45f, 0.45f, 0.5f);
+
+        for (int i = 0; i < 3; i++)
+        {
+            var iconTmp = tabButtons[i].transform.Find("Icon")?.GetComponent<TextMeshProUGUI>();
+            if (iconTmp != null) iconTmp.color = (i == index) ? activeColor : inactiveColor;
+            if (tabLabels[i] != null) tabLabels[i].color = (i == index) ? activeColor : inactiveColor;
+        }
+
+        mainMenuPanel.SetActive(index == 1);
+        marketPanel.SetActive(index == 0);
+        leaderboardPanel.SetActive(index == 2);
+
+        if (index == 2) RefreshLeaderboard();
+    }
+
+    // ─── Market Panel ───
+
+    private void CreateMarketPanel(GameObject parent)
+    {
+        marketPanel = new GameObject("MarketPanel");
+        marketPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = marketPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.09f, 0.09f, 0.12f, 1f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        // Header
+        var titleObj = new GameObject("MarketTitle");
+        titleObj.transform.SetParent(marketPanel.transform, false);
+        var titleTmp = titleObj.AddComponent<TextMeshProUGUI>();
+        titleTmp.text = "MARKET";
+        titleTmp.fontSize = 38;
+        titleTmp.alignment = TextAlignmentOptions.Center;
+        titleTmp.color = Color.white;
+        titleTmp.fontStyle = FontStyles.Bold;
+        titleTmp.characterSpacing = 5;
+        var titleRt = titleTmp.rectTransform;
+        titleRt.anchorMin = new Vector2(0, 1);
+        titleRt.anchorMax = new Vector2(1, 1);
+        titleRt.pivot = new Vector2(0.5f, 1);
+        titleRt.anchoredPosition = new Vector2(0, -25);
+        titleRt.sizeDelta = new Vector2(0, 45);
+
+        var subObj = new GameObject("MarketSub");
+        subObj.transform.SetParent(marketPanel.transform, false);
+        var subTmp = subObj.AddComponent<TextMeshProUGUI>();
+        subTmp.text = "Spend your golden pawns on cosmetics";
+        subTmp.fontSize = 18;
+        subTmp.alignment = TextAlignmentOptions.Center;
+        subTmp.color = new Color(0.55f, 0.55f, 0.6f);
+        var subRt = subTmp.rectTransform;
+        subRt.anchorMin = new Vector2(0, 1);
+        subRt.anchorMax = new Vector2(1, 1);
+        subRt.pivot = new Vector2(0.5f, 1);
+        subRt.anchoredPosition = new Vector2(0, -72);
+        subRt.sizeDelta = new Vector2(0, 25);
+
+        // Scroll view
+        var scrollObj = new GameObject("MarketScrollView");
+        scrollObj.transform.SetParent(marketPanel.transform, false);
+        marketContentScroll = scrollObj;
+        var scrollComp = scrollObj.AddComponent<ScrollRect>();
+        var scrollRt = scrollObj.GetComponent<RectTransform>();
+        scrollRt.anchorMin = Vector2.zero;
+        scrollRt.anchorMax = Vector2.one;
+        scrollRt.offsetMin = new Vector2(0, 80); // leave room for tab bar
+        scrollRt.offsetMax = new Vector2(0, -100);
+        scrollComp.horizontal = false;
+        scrollComp.vertical = true;
+        scrollComp.scrollSensitivity = 40;
+        scrollComp.movementType = ScrollRect.MovementType.Elastic;
+
+        var vpObj = new GameObject("Viewport");
+        vpObj.transform.SetParent(scrollObj.transform, false);
+        vpObj.AddComponent<RectMask2D>();
+        var vpRt = vpObj.GetComponent<RectTransform>();
+        vpRt.anchorMin = Vector2.zero;
+        vpRt.anchorMax = Vector2.one;
+        vpRt.offsetMin = Vector2.zero;
+        vpRt.offsetMax = Vector2.zero;
+        scrollComp.viewport = vpRt;
+
+        marketContentObj = new GameObject("Content");
+        marketContentObj.transform.SetParent(vpObj.transform, false);
+        var contentRt = marketContentObj.AddComponent<RectTransform>();
+        contentRt.anchorMin = new Vector2(0, 1);
+        contentRt.anchorMax = new Vector2(1, 1);
+        contentRt.pivot = new Vector2(0.5f, 1);
+        contentRt.anchoredPosition = Vector2.zero;
+        var vlg = marketContentObj.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = 12;
+        vlg.padding = new RectOffset(20, 20, 8, 20);
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        var csf = marketContentObj.AddComponent<ContentSizeFitter>();
+        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        scrollComp.content = contentRt;
+
+        marketPanel.SetActive(false);
+    }
+
+    private void PopulateMarket()
+    {
+        // Clear existing
+        foreach (Transform child in marketContentObj.transform)
+            Destroy(child.gameObject);
+
+        var registry = Resources.Load<MarketRegistry>("MarketRegistry");
+        if (registry == null || registry.items == null || registry.items.Length == 0)
+        {
+            // Show built-in default items when no registry exists
+            CreateBuiltInMarketItems();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(
+                marketContentObj.GetComponent<RectTransform>());
+            return;
+        }
+
+        foreach (var item in registry.items)
+        {
+            if (item == null) continue;
+            CreateMarketItemCard(item);
+        }
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate(
+            marketContentObj.GetComponent<RectTransform>());
+    }
+
+    private void CreateBuiltInMarketItems()
+    {
+        // Board Themes section header
+        CreateMarketSectionHeader("Board Themes");
+
+        // Classic (default)
+        CreateMarketItemRow("theme_classic", "Classic", "The timeless chess.com look",
+            0, MarketCategory.BoardTheme, true,
+            new Color(0.941f, 0.851f, 0.710f), new Color(0.710f, 0.533f, 0.388f));
+
+        // Dark Mode
+        CreateMarketItemRow("theme_dark", "Dark Mode", "Easy on the eyes",
+            25, MarketCategory.BoardTheme, false,
+            new Color(0.227f, 0.227f, 0.290f), new Color(0.149f, 0.149f, 0.208f));
+
+        // Forest
+        CreateMarketItemRow("theme_forest", "Forest", "Nature-inspired green tones",
+            25, MarketCategory.BoardTheme, false,
+            new Color(0.659f, 0.835f, 0.635f), new Color(0.357f, 0.549f, 0.353f));
+    }
+
+    private void CreateMarketSectionHeader(string title)
+    {
+        var headerObj = new GameObject("SectionHeader");
+        headerObj.transform.SetParent(marketContentObj.transform, false);
+        var le = headerObj.AddComponent<LayoutElement>();
+        le.preferredHeight = 40;
+
+        var tmp = headerObj.AddComponent<TextMeshProUGUI>();
+        tmp.text = title;
+        tmp.fontSize = 22;
+        tmp.fontStyle = FontStyles.Bold;
+        tmp.color = new Color(0.7f, 0.7f, 0.75f);
+        tmp.alignment = TextAlignmentOptions.MidlineLeft;
+    }
+
+    private void CreateMarketItemRow(string itemId, string displayName, string description,
+        int price, MarketCategory category, bool isDefault,
+        Color lightColor, Color darkColor)
+    {
+        bool owned = isDefault || PlayerPrefs.GetInt($"Owned_{itemId}", 0) == 1;
+        string activeKey = category == MarketCategory.BoardTheme ? "Active_BoardTheme" : "Active_PieceStyle";
+        string activeId = PlayerPrefs.GetString(activeKey, category == MarketCategory.BoardTheme ? "theme_classic" : "style_classic");
+        bool isActive = activeId == itemId;
+
+        var cardObj = new GameObject($"Item_{itemId}");
+        cardObj.transform.SetParent(marketContentObj.transform, false);
+        var cardLe = cardObj.AddComponent<LayoutElement>();
+        cardLe.preferredHeight = 80;
+        var cardImg = cardObj.AddComponent<Image>();
+        cardImg.color = isActive ? new Color(0.18f, 0.22f, 0.18f) : new Color(0.14f, 0.14f, 0.18f);
+
+        // Color preview (for board themes)
+        if (category == MarketCategory.BoardTheme)
+        {
+            var previewObj = new GameObject("Preview");
+            previewObj.transform.SetParent(cardObj.transform, false);
+            var previewImg = previewObj.AddComponent<Image>();
+            previewImg.color = lightColor;
+            var prevRt = previewImg.rectTransform;
+            prevRt.anchorMin = new Vector2(0, 0.15f);
+            prevRt.anchorMax = new Vector2(0, 0.85f);
+            prevRt.pivot = new Vector2(0, 0.5f);
+            prevRt.anchoredPosition = new Vector2(14, 0);
+            prevRt.sizeDelta = new Vector2(25, 0);
+
+            var preview2Obj = new GameObject("Preview2");
+            preview2Obj.transform.SetParent(cardObj.transform, false);
+            var preview2Img = preview2Obj.AddComponent<Image>();
+            preview2Img.color = darkColor;
+            var prev2Rt = preview2Img.rectTransform;
+            prev2Rt.anchorMin = new Vector2(0, 0.15f);
+            prev2Rt.anchorMax = new Vector2(0, 0.85f);
+            prev2Rt.pivot = new Vector2(0, 0.5f);
+            prev2Rt.anchoredPosition = new Vector2(39, 0);
+            prev2Rt.sizeDelta = new Vector2(25, 0);
+        }
+
+        // Title
+        float textLeft = category == MarketCategory.BoardTheme ? 75 : 15;
+        var nameObj = new GameObject("Name");
+        nameObj.transform.SetParent(cardObj.transform, false);
+        var nameTmp = nameObj.AddComponent<TextMeshProUGUI>();
+        nameTmp.text = displayName;
+        nameTmp.fontSize = 22;
+        nameTmp.fontStyle = FontStyles.Bold;
+        nameTmp.color = Color.white;
+        nameTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        var nameRt = nameTmp.rectTransform;
+        nameRt.anchorMin = new Vector2(0, 0.5f);
+        nameRt.anchorMax = new Vector2(0.6f, 1);
+        nameRt.offsetMin = new Vector2(textLeft, 0);
+        nameRt.offsetMax = new Vector2(0, -8);
+
+        // Description
+        var descObj = new GameObject("Desc");
+        descObj.transform.SetParent(cardObj.transform, false);
+        var descTmp = descObj.AddComponent<TextMeshProUGUI>();
+        descTmp.text = description;
+        descTmp.fontSize = 15;
+        descTmp.color = new Color(0.55f, 0.55f, 0.6f);
+        descTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        var descRt = descTmp.rectTransform;
+        descRt.anchorMin = new Vector2(0, 0);
+        descRt.anchorMax = new Vector2(0.6f, 0.5f);
+        descRt.offsetMin = new Vector2(textLeft, 8);
+        descRt.offsetMax = Vector2.zero;
+
+        // Action button (right side)
+        var actionBtnObj = new GameObject("ActionBtn");
+        actionBtnObj.transform.SetParent(cardObj.transform, false);
+        var actionImg = actionBtnObj.AddComponent<Image>();
+        var actionRt = actionImg.rectTransform;
+        actionRt.anchorMin = new Vector2(1, 0.2f);
+        actionRt.anchorMax = new Vector2(1, 0.8f);
+        actionRt.pivot = new Vector2(1, 0.5f);
+        actionRt.anchoredPosition = new Vector2(-14, 0);
+        actionRt.sizeDelta = new Vector2(110, 0);
+
+        var actionBtn = actionBtnObj.AddComponent<Button>();
+        actionBtn.targetGraphic = actionImg;
+
+        var actionTextObj = new GameObject("Text");
+        actionTextObj.transform.SetParent(actionBtnObj.transform, false);
+        var actionTmp = actionTextObj.AddComponent<TextMeshProUGUI>();
+        actionTmp.fontSize = 17;
+        actionTmp.fontStyle = FontStyles.Bold;
+        actionTmp.alignment = TextAlignmentOptions.Center;
+        var actionTextRt = actionTmp.rectTransform;
+        actionTextRt.anchorMin = Vector2.zero;
+        actionTextRt.anchorMax = Vector2.one;
+        actionTextRt.offsetMin = Vector2.zero;
+        actionTextRt.offsetMax = Vector2.zero;
+
+        string capturedId = itemId;
+        MarketCategory capturedCat = category;
+        Color capturedLight = lightColor;
+        Color capturedDark = darkColor;
+
+        if (isActive)
+        {
+            actionImg.color = new Color(0.3f, 0.3f, 0.35f);
+            actionTmp.text = "Active";
+            actionTmp.color = new Color(0.5f, 0.8f, 0.5f);
+            actionBtn.interactable = false;
+        }
+        else if (owned)
+        {
+            actionImg.color = new Color(0.2f, 0.45f, 0.25f);
+            actionTmp.text = "Equip";
+            actionTmp.color = Color.white;
+            actionBtn.onClick.AddListener(() =>
+            {
+                EquipItem(capturedId, capturedCat, capturedLight, capturedDark);
+            });
+        }
+        else
+        {
+            actionImg.color = new Color(0.6f, 0.5f, 0.1f);
+            actionTmp.text = $"{price}";
+            actionTmp.color = Color.white;
+            actionBtn.onClick.AddListener(() =>
+            {
+                BuyItem(capturedId, price, capturedCat, capturedLight, capturedDark);
+            });
+        }
+    }
+
+    private void CreateMarketItemCard(MarketItemDefinition item)
+    {
+        CreateMarketItemRow(item.itemId, item.displayName, item.description,
+            item.price, item.category, item.isDefault,
+            item.lightSquareColor, item.darkSquareColor);
+    }
+
+    private void BuyItem(string itemId, int price, MarketCategory category, Color light, Color dark)
+    {
+        if (GetGold() < price)
+        {
+            ShowSplashText("Not enough gold!", 1.2f, null, new Color(1f, 0.3f, 0.3f));
+            return;
+        }
+
+        AddGold(-price);
+        PlayerPrefs.SetInt($"Owned_{itemId}", 1);
+        PlayerPrefs.Save();
+        EquipItem(itemId, category, light, dark);
+    }
+
+    private void EquipItem(string itemId, MarketCategory category, Color light, Color dark)
+    {
+        string activeKey = category == MarketCategory.BoardTheme ? "Active_BoardTheme" : "Active_PieceStyle";
+        PlayerPrefs.SetString(activeKey, itemId);
+        PlayerPrefs.Save();
+
+        if (category == MarketCategory.BoardTheme)
+            ChessBoard.Instance.ApplyTheme(light, dark);
+
+        PopulateMarket(); // Refresh UI
+    }
+
+    // ─── Leaderboard Panel ───
+
+    private void CreateLeaderboardPanel(GameObject parent)
+    {
+        leaderboardPanel = new GameObject("LeaderboardPanel");
+        leaderboardPanel.transform.SetParent(parent.transform, false);
+
+        var panelImg = leaderboardPanel.AddComponent<Image>();
+        panelImg.color = new Color(0.09f, 0.09f, 0.12f, 1f);
+        var panelRect = panelImg.rectTransform;
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        // Header
+        var titleObj = new GameObject("LeaderboardTitle");
+        titleObj.transform.SetParent(leaderboardPanel.transform, false);
+        var titleTmp = titleObj.AddComponent<TextMeshProUGUI>();
+        titleTmp.text = "LEADERBOARD";
+        titleTmp.fontSize = 38;
+        titleTmp.alignment = TextAlignmentOptions.Center;
+        titleTmp.color = Color.white;
+        titleTmp.fontStyle = FontStyles.Bold;
+        titleTmp.characterSpacing = 5;
+        var titleRt = titleTmp.rectTransform;
+        titleRt.anchorMin = new Vector2(0, 1);
+        titleRt.anchorMax = new Vector2(1, 1);
+        titleRt.pivot = new Vector2(0.5f, 1);
+        titleRt.anchoredPosition = new Vector2(0, -25);
+        titleRt.sizeDelta = new Vector2(0, 45);
+
+        // Status text
+        var statusObj = new GameObject("LeaderboardStatus");
+        statusObj.transform.SetParent(leaderboardPanel.transform, false);
+        leaderboardStatusText = statusObj.AddComponent<TextMeshProUGUI>();
+        leaderboardStatusText.text = "Loading...";
+        leaderboardStatusText.fontSize = 24;
+        leaderboardStatusText.alignment = TextAlignmentOptions.Center;
+        leaderboardStatusText.color = new Color(0.6f, 0.6f, 0.6f);
+        var statusRt = leaderboardStatusText.rectTransform;
+        statusRt.anchorMin = new Vector2(0.1f, 0.3f);
+        statusRt.anchorMax = new Vector2(0.9f, 0.7f);
+        statusRt.offsetMin = Vector2.zero;
+        statusRt.offsetMax = Vector2.zero;
+
+        // Scroll view
+        var scrollObj = new GameObject("LeaderboardScrollView");
+        scrollObj.transform.SetParent(leaderboardPanel.transform, false);
+        leaderboardContentScroll = scrollObj;
+        var scrollImg = scrollObj.AddComponent<Image>();
+        scrollImg.color = new Color(0.07f, 0.07f, 0.10f);
+        var scrollComp = scrollObj.AddComponent<ScrollRect>();
+        var scrollRt = scrollObj.GetComponent<RectTransform>();
+        scrollRt.anchorMin = new Vector2(0.05f, 0);
+        scrollRt.anchorMax = new Vector2(0.95f, 1);
+        scrollRt.offsetMin = new Vector2(0, 80); // tab bar space
+        scrollRt.offsetMax = new Vector2(0, -80);
+        scrollComp.horizontal = false;
+        scrollComp.vertical = true;
+        scrollComp.scrollSensitivity = 30;
+
+        var vpObj = new GameObject("Viewport");
+        vpObj.transform.SetParent(scrollObj.transform, false);
+        vpObj.AddComponent<RectMask2D>();
+        var vpRt = vpObj.GetComponent<RectTransform>();
+        vpRt.anchorMin = Vector2.zero;
+        vpRt.anchorMax = Vector2.one;
+        vpRt.offsetMin = Vector2.zero;
+        vpRt.offsetMax = Vector2.zero;
+        scrollComp.viewport = vpRt;
+
+        leaderboardContentObj = new GameObject("Content");
+        leaderboardContentObj.transform.SetParent(vpObj.transform, false);
+        var contentRt = leaderboardContentObj.AddComponent<RectTransform>();
+        contentRt.anchorMin = new Vector2(0, 1);
+        contentRt.anchorMax = new Vector2(1, 1);
+        contentRt.pivot = new Vector2(0.5f, 1);
+        contentRt.anchoredPosition = Vector2.zero;
+        var vlg = leaderboardContentObj.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = 4;
+        vlg.padding = new RectOffset(6, 6, 6, 6);
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        var csf = leaderboardContentObj.AddComponent<ContentSizeFitter>();
+        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        scrollComp.content = contentRt;
+
+        leaderboardContentScroll.SetActive(false);
+        leaderboardPanel.SetActive(false);
+    }
+
+    private void RefreshLeaderboard()
+    {
+        foreach (Transform child in leaderboardContentObj.transform)
+            Destroy(child.gameObject);
+        leaderboardStatusText.text = "Loading...";
+        leaderboardStatusText.gameObject.SetActive(true);
+        leaderboardContentScroll.SetActive(false);
+
+        PlayerStats.FetchLeaderboard(this, (entries) =>
+        {
+            if (!leaderboardPanel.activeSelf) return;
+            foreach (Transform child in leaderboardContentObj.transform)
+                Destroy(child.gameObject);
+
+            if (entries.Length == 0)
+            {
+                leaderboardStatusText.text = "No players yet.\nPlay some games!";
+                leaderboardStatusText.gameObject.SetActive(true);
+                leaderboardContentScroll.SetActive(false);
+                return;
+            }
+
+            leaderboardStatusText.gameObject.SetActive(false);
+            leaderboardContentScroll.SetActive(true);
+
+            // Header row
+            CreateLeaderboardRow(-1, "#", "Player", "Wins", "Streak", true, false);
+
+            for (int i = 0; i < entries.Length; i++)
+            {
+                var e = entries[i];
+                CreateLeaderboardRow(i + 1, (i + 1).ToString(), e.name,
+                    e.wins.ToString(), e.bestStreak.ToString(), false, e.isMe);
+            }
+
+            LayoutRebuilder.ForceRebuildLayoutImmediate(
+                leaderboardContentObj.GetComponent<RectTransform>());
+        });
+    }
+
+    private void CreateLeaderboardRow(int rank, string rankStr, string name,
+        string wins, string streak, bool isHeader, bool isMe)
+    {
+        float rowHeight = isHeader ? 34 : 44;
+        var rowObj = new GameObject(isHeader ? "LBHeader" : $"LBRow_{rank}");
+        rowObj.transform.SetParent(leaderboardContentObj.transform, false);
+
+        var rowImg = rowObj.AddComponent<Image>();
+        if (isHeader)
+            rowImg.color = new Color(0.14f, 0.14f, 0.2f);
+        else if (isMe)
+            rowImg.color = new Color(0.15f, 0.22f, 0.12f);
+        else
+            rowImg.color = new Color(0.1f, 0.1f, 0.14f);
+
+        var le = rowObj.AddComponent<LayoutElement>();
+        le.preferredHeight = rowHeight;
+
+        float fs = isHeader ? 15f : 18f;
+        Color textColor = isHeader ? new Color(0.9f, 0.75f, 0.25f) :
+                          isMe ? new Color(0.6f, 1f, 0.5f) : Color.white;
+
+        // Rank
+        AddTableCell(rowObj.transform, rankStr, 0.02f, 0.12f, TextAlignmentOptions.Center, fs).color = textColor;
+        // Name
+        var nameCell = AddTableCell(rowObj.transform, name, 0.12f, 0.55f, TextAlignmentOptions.MidlineLeft, fs);
+        nameCell.color = textColor;
+        if (isMe && !isHeader) nameCell.fontStyle = FontStyles.Bold;
+        // Wins
+        AddTableCell(rowObj.transform, wins, 0.55f, 0.75f, TextAlignmentOptions.Center, fs).color = textColor;
+        // Streak
+        AddTableCell(rowObj.transform, streak, 0.75f, 0.98f, TextAlignmentOptions.Center, fs).color = textColor;
+    }
+
+    // ─── Tab-aware Show/Hide ───
+
+    public void ShowTabBar()
+    {
+        tabBarPanel.SetActive(true);
+    }
+
+    public void HideTabBar()
+    {
+        tabBarPanel.SetActive(false);
     }
 
     private void CreatePlayerModePanel(GameObject parent)
@@ -1206,6 +1901,8 @@ public class UIManager : MonoBehaviour
         return btnObj;
     }
 
+    public Canvas GetCanvas() => canvas;
+
     public void UpdateTurnText(PieceColor color, bool inCheck = false)
     {
         string colorName = color == PieceColor.White ? "White" : "Black";
@@ -1214,17 +1911,47 @@ public class UIManager : MonoBehaviour
         turnText.color = inCheck ? new Color(1f, 0.4f, 0.4f) : Color.white;
     }
 
+    public void HideTurnText()
+    {
+        turnText.text = "";
+    }
+
     public void ShowGameOver(PieceColor winner)
     {
         string winnerName = winner == PieceColor.White ? "White" : "Black";
         gameOverText.text = $"Checkmate!\n{winnerName} Wins!";
+        UpdateGameOverDetails();
         gameOverPanel.SetActive(true);
     }
 
     public void ShowStalemate()
     {
         gameOverText.text = "Stalemate!\nDraw!";
+        goldEarnedThisGame = 0;
+        UpdateGameOverDetails();
         gameOverPanel.SetActive(true);
+    }
+
+    private void UpdateGameOverDetails()
+    {
+        if (goldEarnedThisGame > 0)
+            gameOverRewardText.text = $"+{goldEarnedThisGame} Golden Pawns";
+        else
+            gameOverRewardText.text = "";
+
+        int streak = PlayerStats.CurrentStreak;
+        if (streak >= 2)
+            gameOverStreakText.text = $"Win Streak: {streak}  |  Best: {PlayerStats.BestStreak}";
+        else if (PlayerStats.BestStreak > 0)
+            gameOverStreakText.text = $"Best Streak: {PlayerStats.BestStreak}";
+        else
+            gameOverStreakText.text = "";
+    }
+
+    /// <summary>Set how much gold was earned this game (call before ShowGameOver).</summary>
+    public void SetGoldEarned(int amount)
+    {
+        goldEarnedThisGame = amount;
     }
 
     public void HideGameOver()
@@ -1248,8 +1975,16 @@ public class UIManager : MonoBehaviour
         var nameSub = mainMenuPanel.transform.Find("PlayerNameSub")?.GetComponent<TextMeshProUGUI>();
         if (nameSub != null)
             nameSub.text = $"Playing as: {PlayerPrefs.GetString("PlayerName", "")}";
+
+        // Reset to Home tab, show all menu elements
+        activeTabIndex = 1;
         mainMenuPanel.SetActive(true);
+        marketPanel.SetActive(false);
+        leaderboardPanel.SetActive(false);
+        ShowTabBar();
+        SwitchTab(1);
         ShowCurrencyDisplay();
+        PopulateMarket();
 
         // Show profile name-entry panel on top if no name has been set yet
         if (!PlayerPrefs.HasKey("PlayerName"))
@@ -1259,6 +1994,9 @@ public class UIManager : MonoBehaviour
     public void HideMainMenu()
     {
         mainMenuPanel.SetActive(false);
+        marketPanel.SetActive(false);
+        leaderboardPanel.SetActive(false);
+        HideTabBar();
     }
 
     public void ShowSeedButtons()
@@ -1420,16 +2158,20 @@ public class UIManager : MonoBehaviour
         textObj.transform.SetParent(splashPanel.transform, false);
         splashText = textObj.AddComponent<TextMeshProUGUI>();
         splashText.fontSize = 100;
+        splashText.fontSizeMin = 36;
+        splashText.fontSizeMax = 100;
+        splashText.enableAutoSizing = true;
         splashText.alignment = TextAlignmentOptions.Center;
         splashText.color = new Color(1f, 0.15f, 0.15f);
         splashText.fontStyle = FontStyles.Bold | FontStyles.Italic;
-        splashText.enableWordWrapping = false;
+        splashText.enableWordWrapping = true;
         splashText.outlineWidth = 0.3f;
         splashText.outlineColor = new Color32(0, 0, 0, 200);
         var textRect = splashText.rectTransform;
-        textRect.anchorMin = new Vector2(0.5f, 0.5f);
-        textRect.anchorMax = new Vector2(0.5f, 0.5f);
-        textRect.sizeDelta = new Vector2(900, 150);
+        textRect.anchorMin = new Vector2(0.05f, 0.35f);
+        textRect.anchorMax = new Vector2(0.95f, 0.65f);
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
         textRect.anchoredPosition = Vector2.zero;
 
         splashPanel.SetActive(false);
@@ -2031,6 +2773,7 @@ public class UIManager : MonoBehaviour
     {
         string winnerName = winner == PieceColor.White ? "White" : "Black";
         gameOverText.text = $"King Captured!\n{winnerName} Wins!";
+        UpdateGameOverDetails();
         gameOverPanel.SetActive(true);
     }
 

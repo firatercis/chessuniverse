@@ -544,6 +544,7 @@ public class BluffyManager : MonoBehaviour
         {
             currentPhase = BluffyPhase.GameOver;
             GameLogger.Instance?.EndGame($"{winner.ToString().ToLower()}_wins");
+            GameManager.Instance.RecordGameResult(winner);
             UIManager.Instance.HideBluffPanel();
             UIManager.Instance.ShowBluffyGameOver(winner);
             return;
@@ -974,6 +975,7 @@ public class BluffyManager : MonoBehaviour
         {
             currentPhase = BluffyPhase.GameOver;
             GameLogger.Instance?.EndGame($"{winner.ToString().ToLower()}_wins");
+            GameManager.Instance.RecordGameResult(winner);
             UIManager.Instance.HideBluffPanel();
             UIManager.Instance.ShowBluffyGameOver(winner);
             ClearPendingMove();
@@ -1021,6 +1023,7 @@ public class BluffyManager : MonoBehaviour
         {
             currentPhase = BluffyPhase.GameOver;
             GameLogger.Instance?.EndGame($"{winner.ToString().ToLower()}_wins");
+            GameManager.Instance.RecordGameResult(winner);
             UIManager.Instance.ShowBluffyGameOver(winner);
             return;
         }

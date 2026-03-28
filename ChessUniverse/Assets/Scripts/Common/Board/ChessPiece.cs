@@ -188,7 +188,9 @@ public class ChessPiece : MonoBehaviour
         };
     }
 
-    private List<Vector2Int> GetBluffyMoves(ChessPiece[,] board)
+    /// <summary>All-direction + L-shape moves for Bluffy Chess super-pieces.
+    /// Public so BluffyChessPlugin can call it via IGameModePlugin.GetCustomMoves.</summary>
+    public List<Vector2Int> GetBluffyMoves(ChessPiece[,] board)
     {
         var moves = new List<Vector2Int>();
 

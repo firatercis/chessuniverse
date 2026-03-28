@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dfef05940ac4c564b92832a16d1c7f8b, type: 3}
+  m_Name: BluffyChessDefinition
+  m_EditorClassIdentifier: 
+  modeId: BluffyChess
+  displayName: Bluffy Chess
+  description: Hidden identities and bluff calls
+  icon: {fileID: 21300000, guid: 56c7174f49e8cac47932ad82cc46a92e, type: 3}
+  badges:
+  - {fileID: 11400000, guid: 31d1df5ac98db9f4a8a365cafd245dbd, type: 2}
+  primaryButtonText: Play Online
+  isDisabled: 0
+  disabledText: 
+  supportsSinglePlayer: 1
+  supportsLocal: 1
+  supportsOnline: 1
+  rulesTitle: Bluffy Chess Rules
+  rulesText: "Big pieces are masked \u2014 your opponent can't see your real pieces!\n\nArrange
+    your back rank before the game starts.\nBig pieces can move in ANY direction
+    (Queen + Knight combined).\n\nAfter a big piece moves, opponent can:\n  \u2022
+    Accept \u2014 the move stands\n  \u2022 Call Bluff \u2014 if the move is illegal
+    with the real type:\n      Caught! \u2192 the piece dies\n      Wrong call \u2192
+    you sacrifice a piece & mover rearranges"
+  tutorialPrefsKey: BluffyTutorialDone
+  hasTutorial: 1
+  startingPosition: {fileID: 0}
+  pluginTypeName: BluffyChessPlugin

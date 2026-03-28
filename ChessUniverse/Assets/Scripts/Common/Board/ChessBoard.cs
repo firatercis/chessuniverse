@@ -25,9 +25,11 @@ public class ChessBoard : MonoBehaviour
     private Vector2Int lastMoveTo;
     private bool hasLastMove;
 
-    // Board square colors — chess.com-style brown
-    private static readonly Color LightSquareColor = new Color(0.941f, 0.851f, 0.710f); // #F0D9B5
-    private static readonly Color DarkSquareColor  = new Color(0.710f, 0.533f, 0.388f); // #B58863
+    // Board square colors — defaults are chess.com-style brown
+    private static readonly Color DefaultLightColor = new Color(0.941f, 0.851f, 0.710f); // #F0D9B5
+    private static readonly Color DefaultDarkColor  = new Color(0.710f, 0.533f, 0.388f); // #B58863
+    private Color currentLightColor = DefaultLightColor;
+    private Color currentDarkColor  = DefaultDarkColor;
 
     private Sprite _highlightSprite;
 
@@ -49,7 +51,7 @@ public class ChessBoard : MonoBehaviour
 
                 bool isLight = (x + y) % 2 != 0;
                 sr.sprite = CreateFallbackSprite();
-                sr.color = isLight ? LightSquareColor : DarkSquareColor;
+                sr.color = isLight ? currentLightColor : currentDarkColor;
                 sr.sortingOrder = 0;
                 squares[x, y] = sq;
                 squareRenderers[x, y] = sr;
@@ -257,5 +259,48 @@ public class ChessBoard : MonoBehaviour
 
         _fallbackSprite = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4);
         return _fallbackSprite;
+    }
+
+    /// <summary>Apply a board theme (light/dark square colors). Pass default colors to reset.</summary>
+    public void ApplyTheme(Color lightColor, Color darkColor)
+    {
+        currentLightColor = lightColor;
+        currentDarkColor  = darkColor;
+        for (int x = 0; x < 8; x++)
+            for (int y = 0; y < 8; y++)
+            {
+                bool isLight = (x + y) % 2 != 0;
+                squareRenderers[x, y].color = isLight ? currentLightColor : currentDarkColor;
+            }
+    }
+
+    /// <summary>Load and apply the active board theme from PlayerPrefs.</summary>
+    public void LoadActiveTheme()
+    {
+        string activeId = PlayerPrefs.GetString("Active_BoardTheme", "theme_classic");
+
+        var registry = Resources.Load<MarketRegistry>("MarketRegistry");
+        if (registry != null && registry.items != null)
+        {
+            foreach (var item in registry.items)
+            {
+                if (item != null && item.itemId == activeId && item.category == MarketCategory.BoardTheme)
+                {
+                    ApplyTheme(item.lightSquareColor, item.darkSquareColor);
+                    return;
+                }
+            }
+        }
+
+        // Built-in themes fallback (no registry asset needed)
+        switch (activeId)
+        {
+            case "theme_dark":
+                ApplyTheme(new Color(0.227f, 0.227f, 0.290f), new Color(0.149f, 0.149f, 0.208f));
+                return;
+            case "theme_forest":
+                ApplyTheme(new Color(0.659f, 0.835f, 0.635f), new Color(0.357f, 0.549f, 0.353f));
+                return;
+        }
     }
 }
